@@ -183,6 +183,13 @@ export async function downloadStorageObject(path: string): Promise<{ body: Buffe
 }
 
 export async function uploadStorageObject(path: string, body: Buffer, contentType: string): Promise<void> {
+  // Node.js Buffer is valid at runtime for fetch, but newer DOM typings used by
+  // Next.js/Netlify do not accept Buffer<ArrayBufferLike> as BodyInit. Copy the
+  // bytes into a plain Uint8Array backed by ArrayBuffer so both the runtime and
+  // TypeScript agree on the request body type.
+  const payload = new Uint8Array(body.byteLength);
+  payload.set(body);
+
   const response = await fetch(`${storageBase()}/object/${bucketPath(path)}`, {
     method: "POST",
     headers: adminHeaders({
@@ -190,7 +197,7 @@ export async function uploadStorageObject(path: string, body: Buffer, contentTyp
       "content-type": contentType,
       "x-upsert": "false",
     }),
-    body,
+    body: payload,
     cache: "no-store",
   });
   if (!response.ok) {

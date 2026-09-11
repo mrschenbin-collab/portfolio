@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
+import type { Metadata } from "sharp";
 import {
   createSignedStorageReadUrl,
   createSignedStorageUpload,
@@ -79,7 +80,7 @@ async function prepareImageBuffer(original: Buffer, declaredType = ""): Promise<
   if (!detected) throw new Error("图片格式无效，请上传真实的 JPG、PNG、WEBP 或 GIF 文件");
   if (declaredType && declaredType !== detected.contentType) throw new Error("图片实际格式与文件类型不一致，请重新导出后上传");
 
-  let metadata: sharp.Metadata;
+  let metadata: Metadata;
   try {
     metadata = await sharp(original, { animated: detected.extension === "gif" }).metadata();
   } catch {

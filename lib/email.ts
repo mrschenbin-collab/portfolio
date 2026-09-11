@@ -10,7 +10,7 @@ type SendMailResult = {
 };
 
 const purposeLabels: Record<StoredEmailCodePurpose, string> = {
-  register: "注册账号",
+  register: "注册验证",
   reset: "重置密码",
 };
 
@@ -19,19 +19,19 @@ function clean(value: unknown, max: number): string {
 }
 
 function tencentSecretId(): string {
-  return clean(process.env.TENCENT_SECRET_ID, 300);
+  return process.env.TENCENT_SECRET_ID?.trim() ?? "";
 }
 
 function tencentSecretKey(): string {
-  return clean(process.env.TENCENT_SECRET_KEY, 300);
+  return process.env.TENCENT_SECRET_KEY?.trim() ?? "";
 }
 
 function sesRegion(): string {
-  return clean(process.env.TENCENT_SES_REGION, 60) || "ap-hongkong";
+  return process.env.TENCENT_SES_REGION?.trim() || "ap-hongkong";
 }
 
 function sesFromEmail(): string {
-  return clean(process.env.TENCENT_SES_FROM_EMAIL, 300) || "no-reply@mail.cblworks.site";
+  return process.env.TENCENT_SES_FROM_EMAIL?.trim() || "no-reply@mail.cblworks.site";
 }
 
 function templateId(): number {
@@ -49,6 +49,29 @@ export function isMailConfigured(): boolean {
   );
 }
 
+function sesErrorInfo(error: unknown): { code: string; message: string; requestId: string } {
+  const details = typeof error === "object" && error ? error as {
+    code?: unknown;
+    message?: unknown;
+    requestId?: unknown;
+    getRequestId?: unknown;
+  } : {};
+  const requestId = typeof details.requestId === "string"
+    ? details.requestId
+    : typeof details.getRequestId === "function"
+      ? String(details.getRequestId())
+      : "";
+  return {
+    code: typeof details.code === "string" ? details.code : "UNKNOWN",
+    message: error instanceof Error
+      ? error.message
+      : typeof details.message === "string"
+        ? details.message
+        : "unknown error",
+    requestId,
+  };
+}
+
 export async function sendVerificationEmail(
   to: string,
   code: string,
@@ -64,15 +87,19 @@ export async function sendVerificationEmail(
   }
 
   const label = purposeLabels[purpose];
-  const title = `视觉档案${label}验证码`;
+  const title = "CBL WORKS 验证码";
+  const secretId = tencentSecretId();
+  const secretKey = tencentSecretKey();
+  const region = sesRegion();
+  const fromEmail = sesFromEmail();
+  const id = templateId();
   const client = new ses.v20201002.Client({
     credential: {
-      secretId: tencentSecretId(),
-      secretKey: tencentSecretKey(),
+      secretId,
+      secretKey,
     },
-    region: sesRegion(),
+    region,
     profile: {
-      signMethod: "TC3-HMAC-SHA256",
       httpProfile: {
         reqMethod: "POST",
         reqTimeout: 30,
@@ -82,18 +109,17 @@ export async function sendVerificationEmail(
   });
 
   try {
-    const fromEmail = sesFromEmail();
     await client.SendEmail({
       FromEmailAddress: fromEmail,
       ReplyToAddresses: fromEmail,
       Destination: [to],
       Subject: title,
       Template: {
-        TemplateID: templateId(),
+        TemplateID: id,
         TemplateData: JSON.stringify({
-          code,
+          siteName: "CBL WORKS",
           purpose: label,
-          siteName: "视觉档案",
+          code,
           minutes: "10",
         }),
       },
@@ -101,7 +127,15 @@ export async function sendVerificationEmail(
     });
     return { ok: true, message: "验证码已发送，请查看邮箱。" };
   } catch (error) {
-    console.error("[ses] SendEmail failed:", error instanceof Error ? error.message : "unknown error");
+    console.error("[ses] SendEmail failed:", {
+      ...sesErrorInfo(error),
+      endpoint: "ses.tencentcloudapi.com",
+      region,
+      fromEmail,
+      templateId: id,
+      secretIdLength: secretId.length,
+      secretKeyLength: secretKey.length,
+    });
     return { error: "验证码邮件发送失败，请稍后重试或检查腾讯云 SES 配置。" };
   }
 }

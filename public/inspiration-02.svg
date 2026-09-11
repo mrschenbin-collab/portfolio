@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" role="img" aria-labelledby="title desc">
+  <title id="title">公共视觉灵感 02</title>
+  <desc id="desc">抽象版式参考</desc>
+  <rect width="900" height="650" fill="#f7f5ed"/>
+  <path d="M80 92h740v72H80zM80 214h310v344H80zM440 214h380v78H440zM440 336h260v70H440zM440 452h380v106H440z" fill="#111"/>
+  <circle cx="240" cy="386" r="92" fill="#3152a4"/>
+  <circle cx="319" cy="445" r="42" fill="#e2be31"/>
+  <path d="M520 262l235 0M520 384l140 0M520 506l210 0" stroke="#f7f5ed" stroke-width="16"/>
+</svg>

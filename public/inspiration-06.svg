@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" role="img" aria-labelledby="title desc">
+  <title id="title">公共视觉灵感 06</title>
+  <desc id="desc">抽象图形秩序参考</desc>
+  <rect width="900" height="650" fill="#efede5"/>
+  <g fill="none" stroke="#111" stroke-width="8">
+    <rect x="100" y="95" width="170" height="170"/>
+    <rect x="365" y="95" width="170" height="170"/>
+    <rect x="630" y="95" width="170" height="170"/>
+    <rect x="100" y="385" width="170" height="170"/>
+    <rect x="365" y="385" width="170" height="170"/>
+    <rect x="630" y="385" width="170" height="170"/>
+  </g>
+  <path d="M185 180h530v290H185z" fill="none" stroke="#3152a4" stroke-width="28"/>
+  <circle cx="450" cy="325" r="86" fill="#d7342a"/>
+  <path d="M394 325h112" stroke="#f7f5ed" stroke-width="22" stroke-linecap="round"/>
+</svg>

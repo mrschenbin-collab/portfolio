@@ -1,93 +1,94 @@
-# vinext-starter
+# 视觉传达设计作品集社区
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+这是一个约 10 名受邀作者使用的小型作品集社区。当前部署目标为：
 
-## Prerequisites
+- **Vercel Hobby**：运行 Next.js 页面和 API
+- **Supabase PostgreSQL**：保存用户、密码 Hash、作品、资料、验证码与限流记录
+- **Supabase Storage（Private）**：保存作品图片与本人图片
+- **腾讯云 SES API**：发送注册 / 找回密码验证码
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+> Supabase 只承担数据库和私有图片存储，本项目**不使用 Supabase Auth**。原有的 scrypt 密码 Hash、HttpOnly Session、authVersion、邮箱白名单和腾讯云 SES 验证流程继续保留。
 
-## Sites Lifecycle
+## 本地启动
 
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from `oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm ci
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+默认地址：
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+```text
+http://localhost:3000
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+首次运行前需要先创建 Supabase 项目，并执行：
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
+```text
+supabase/migrations/001_initial.sql
+```
 
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
+然后配置 `.env.local`（不要提交 Git）：
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
+```text
+APP_SECRET=至少 32 字节高熵随机值
+SITE_URL=http://localhost:3000
+ALLOWED_EMAILS=user1@qq.com,user2@qq.com
 
-## Diagnostic Commands
+SUPABASE_URL=https://你的项目.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxx
+SUPABASE_STORAGE_BUCKET=portfolio-media
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+TENCENTCLOUD_SECRET_ID=腾讯云 CAM 专用身份 SecretId
+TENCENTCLOUD_SECRET_KEY=腾讯云 CAM 专用身份 SecretKey
+TENCENT_SES_REGION=SES 地域
+TENCENT_SES_FROM_EMAIL=已审核发信地址
+TENCENT_SES_TEMPLATE_ID=已审核验证码模板 ID
+TENCENT_SES_REPLY_TO=可选
 
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+REGISTRATION_CODE=可选；邮箱白名单之外的第二层邀请校验
+```
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+开发环境若没有配置腾讯云 SES，会返回仅供本地开发使用的测试验证码；Production 不会把验证码返回浏览器。
 
-## Learn More
+## 图片上传
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+图片不再经过 Vercel Function 传输完整文件：
+
+1. 登录用户向站内 API 请求一次性 Supabase Signed Upload URL。
+2. 浏览器把图片直接上传到 Private Storage 的临时目录。
+3. 服务端重新读取临时对象，检查 Magic Bytes、真实图片格式、尺寸和文件大小。
+4. JPG / PNG / WEBP 经 Sharp 重编码并剥离元数据；GIF 保留动画但仍验证格式与尺寸。
+5. 合格图片移动到正式 `media/` 路径，临时对象删除。
+6. 查看图片时先经过网站权限检查，再签发短时 Supabase Signed URL。
+
+单张图片最大 15MB；作品最多 12 张，本人介绍最多 5 张。
+
+## 数据与账号安全
+
+- 密码只保存 `scrypt` Hash + Salt，不保存明文密码。
+- 修改 / 重置密码会递增 `authVersion`，使旧 Session 失效。
+- Session Cookie 使用 HttpOnly、SameSite=Lax，Production 使用 Secure。
+- 注册默认关闭，只允许 `ALLOWED_EMAILS` 中的邮箱注册。
+- 验证码有邮箱/IP限流、尝试次数与过期限制。
+- 登录有邮箱/IP失败次数限制。
+- Supabase Secret Key 只允许出现在 Vercel Server 环境变量，禁止添加 `NEXT_PUBLIC_` 前缀。
+- Supabase 数据表启用 RLS 且不创建浏览器策略；服务器 Secret Key 执行经过本应用授权后的数据库操作。
+- Storage Bucket 为 Private，不创建公开读取策略。
+
+## Vercel 部署
+
+完整步骤见：
+
+```text
+VERCEL_SUPABASE_DEPLOY.md
+```
+
+构建命令已经切换为标准 Next.js：
+
+```bash
+npm run build
+npm run start
+```
+
+旧的 Vinext / Cloudflare / 腾讯 Docker 文件暂时保留在仓库中，但不再参与 Vercel 的生产构建；待 Vercel + Supabase 真机验收通过后再做最终依赖清理。

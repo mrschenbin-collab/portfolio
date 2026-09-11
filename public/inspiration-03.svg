@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" role="img" aria-labelledby="title desc">
+  <title id="title">公共视觉灵感 03</title>
+  <desc id="desc">抽象色彩关系参考</desc>
+  <rect width="900" height="650" fill="#efede5"/>
+  <rect x="80" y="80" width="210" height="490" fill="#d7342a"/>
+  <rect x="330" y="80" width="210" height="490" fill="#e2be31"/>
+  <rect x="580" y="80" width="240" height="490" fill="#3152a4"/>
+  <path d="M130 190h640M130 325h640M130 460h640" stroke="#111" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="450" cy="325" r="95" fill="#f7f5ed"/>
+  <circle cx="450" cy="325" r="43" fill="#111"/>
+</svg>

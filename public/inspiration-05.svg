@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" role="img" aria-labelledby="title desc">
+  <title id="title">公共视觉灵感 05</title>
+  <desc id="desc">抽象信息层级参考</desc>
+  <rect width="900" height="650" fill="#f7f5ed"/>
+  <rect x="82" y="78" width="736" height="494" fill="none" stroke="#111" stroke-width="6"/>
+  <rect x="130" y="126" width="300" height="76" fill="#111"/>
+  <rect x="130" y="242" width="565" height="34" fill="#d7342a"/>
+  <rect x="130" y="312" width="430" height="26" fill="#3152a4"/>
+  <rect x="130" y="372" width="520" height="26" fill="#3152a4"/>
+  <rect x="130" y="450" width="145" height="58" fill="#e2be31"/>
+  <rect x="314" y="450" width="145" height="58" fill="#e2be31"/>
+  <circle cx="714" cy="176" r="74" fill="#e2be31"/>
+</svg>

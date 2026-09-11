@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" role="img" aria-labelledby="title desc">
+  <title id="title">公共视觉灵感 01</title>
+  <desc id="desc">抽象图像构成参考</desc>
+  <rect width="900" height="650" fill="#f2efe7"/>
+  <circle cx="210" cy="200" r="118" fill="#d7342a"/>
+  <rect x="340" y="120" width="320" height="390" fill="#111"/>
+  <path d="M110 470c180-150 260 80 430-50 90-68 150-72 250-16" fill="none" stroke="#3152a4" stroke-width="34"/>
+  <circle cx="690" cy="180" r="58" fill="#e2be31"/>
+  <path d="M390 175h205v38H390zm0 100h250v38H390zm0 100h180v38H390z" fill="#f2efe7"/>
+</svg>

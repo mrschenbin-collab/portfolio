@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" role="img" aria-labelledby="title desc">
+  <title id="title">公共视觉灵感 04</title>
+  <desc id="desc">抽象视觉节奏参考</desc>
+  <rect width="900" height="650" fill="#f2efe7"/>
+  <g fill="#111">
+    <circle cx="130" cy="160" r="54"/>
+    <circle cx="250" cy="230" r="70"/>
+    <circle cx="405" cy="310" r="88"/>
+    <circle cx="590" cy="390" r="106"/>
+    <circle cx="770" cy="480" r="62"/>
+  </g>
+  <path d="M90 492c138-50 228-50 352 0s220 48 368-2" fill="none" stroke="#d7342a" stroke-width="28"/>
+  <path d="M145 135l585 345" stroke="#3152a4" stroke-width="18"/>
+</svg>

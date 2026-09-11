@@ -101,7 +101,7 @@ test("uses email-password auth with signed http-only sessions", async () => {
   assert.match(authSource, /SameSite=Lax/);
   assert.match(authSource, /requestVerificationCode/);
   assert.match(authSource, /resetPassword/);
-  assert.match(authSource, /REGISTRATION_CODE/);
+  assert.doesNotMatch(authSource, /ALLOWED_EMAILS|REGISTRATION_CODE|allowedEmailSet/);
   assert.match(loginRoute, /loginUser/);
   assert.match(registerRoute, /registerUser/);
   assert.doesNotMatch(registerRoute, /createSessionCookie/);

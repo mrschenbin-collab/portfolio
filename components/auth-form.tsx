@@ -16,7 +16,6 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
@@ -46,7 +45,7 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
       const response = await fetch("/api/auth/code", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(mode === "register" ? { purpose: "register", email, inviteCode } : { purpose: "reset", email }),
+        body: JSON.stringify(mode === "register" ? { purpose: "register", email } : { purpose: "reset", email }),
       });
       const result = await readApiResponse<AuthResponse>(response);
       if (!response.ok) throw new Error(result.error ?? "验证码发送失败");
@@ -69,7 +68,7 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
       const payload = mode === "login"
         ? { email, password }
         : mode === "register"
-          ? { name, email, password, inviteCode, code }
+          ? { name, email, password, code }
           : { email, password, code };
       const response = await fetch(endpoint, {
         method: "POST",
@@ -112,7 +111,6 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
       {mode === "register" ? <label><span>姓名或昵称</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：陈同学" /></label> : null}
       <label><span>邮箱</span><input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" /></label>
       <label><span>{mode === "reset" ? "新密码" : "密码"}</span><input required type="password" minLength={mode === "login" ? undefined : 12} maxLength={mode === "login" ? 200 : 128} autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "login" ? "输入密码" : "至少十二位"} /></label>
-      {mode === "register" ? <label><span>邀请码</span><input value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="如未设置可留空" /></label> : null}
       {mode !== "login" ? <label className="code-field"><span>邮箱验证码</span><div><input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="六位数字" /><button type="button" onClick={sendCode} disabled={codeBusy}>{codeBusy ? "发送中…" : mode === "register" ? "发送注册验证码" : "发送重置验证码"}</button></div></label> : null}
       <button type="submit" disabled={busy}>{busy ? "请稍候…" : mode === "register" ? "完成注册" : mode === "reset" ? "重置密码" : "登录"}</button>
       {mode === "login" ? <button className="forgot-button" type="button" onClick={() => switchMode("reset")}>忘记密码？用邮箱验证码重置</button> : null}

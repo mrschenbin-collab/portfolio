@@ -5,6 +5,7 @@ import { sendVerificationEmail } from "@/lib/email";
 import {
   dbDelete,
   dbInsert,
+  dbRpc,
   dbSelect,
   dbUpdate,
 } from "@/lib/supabase";
@@ -31,13 +32,15 @@ const sessionCookieName = "portfolio_session";
 const sessionMaxAge = 60 * 60 * 24 * 30;
 const codeMaxAgeMs = 10 * 60 * 1000;
 const codeCooldownMs = 60 * 1000;
-const otpWindowMs = 60 * 60 * 1000;
+const otpWindowMs = 10 * 60 * 1000;
 const loginWindowMs = 15 * 60 * 1000;
 const maxCodeAttempts = 5;
 const maxOtpSendsPerEmail = 5;
 const maxOtpSendsPerIp = 15;
 const maxLoginFailuresPerEmail = 7;
 const maxLoginFailuresPerIp = 20;
+const maxRegisteredUsers = 20;
+const registrationFullMessage = `当前注册名额已满（${maxRegisteredUsers}/${maxRegisteredUsers}），暂时无法创建新账号。`;
 const minPasswordLength = 12;
 const maxPasswordLength = 128;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -187,25 +190,6 @@ function readLoginPassword(value: unknown): string | AuthFailure {
   return value;
 }
 
-function allowedEmailSet(): Set<string> {
-  return new Set(
-    clean(process.env.ALLOWED_EMAILS, 5000)
-      .split(/[\s,;，；]+/)
-      .map((item) => item.toLocaleLowerCase("en-US"))
-      .filter(Boolean),
-  );
-}
-
-function registrationAccessError(email: string, payload: Record<string, unknown>): string {
-  const allowedEmails = allowedEmailSet();
-  if (allowedEmails.size === 0) return "当前网站暂未开放注册，请联系组织者加入邮箱白名单";
-  if (!allowedEmails.has(email)) return "该邮箱不在注册名单中，请联系组织者确认";
-
-  const requiredInviteCode = clean(process.env.REGISTRATION_CODE, 120);
-  if (requiredInviteCode && clean(payload.inviteCode, 120) !== requiredInviteCode) return "邀请码不正确，请向组织者确认";
-  return "";
-}
-
 async function selectUserByEmail(email: string): Promise<StoredUser | null> {
   const rows = await dbSelect<StoredUser>("users", new URLSearchParams({
     select: "*",
@@ -213,6 +197,43 @@ async function selectUserByEmail(email: string): Promise<StoredUser | null> {
     limit: "1",
   }));
   return rows[0] ?? null;
+}
+
+async function registeredUserCount(): Promise<number> {
+  const rows = await dbSelect<Pick<StoredUser, "id">>("users", new URLSearchParams({
+    select: "id",
+    limit: String(maxRegisteredUsers + 1),
+  }));
+  return rows.length;
+}
+
+async function registrationCapacityError(): Promise<AuthFailure | null> {
+  const count = await registeredUserCount();
+  if (count >= maxRegisteredUsers) return { error: registrationFullMessage, status: 403 };
+  return null;
+}
+
+async function insertUserWithCapacity(user: StoredUser): Promise<StoredUser | AuthFailure> {
+  try {
+    const inserted = await dbRpc<StoredUser>("register_user_with_capacity", {
+      p_id: user.id,
+      p_email: user.email,
+      p_name: user.name,
+      p_password_salt: user.passwordSalt,
+      p_password_hash: user.passwordHash,
+      p_auth_version: user.authVersion,
+      p_created_at: user.createdAt,
+      p_updated_at: user.updatedAt,
+      p_max_users: maxRegisteredUsers,
+    });
+    return inserted[0] ?? user;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("MAX_REGISTERED_USERS_REACHED")) {
+      return { error: registrationFullMessage, status: 403 };
+    }
+    throw error;
+  }
 }
 
 async function selectUserById(id: string): Promise<StoredUser | null> {
@@ -240,16 +261,17 @@ async function checkOtpRateLimit(email: string, purpose: StoredEmailCodePurpose,
   const emailAttempts = await dbSelect<StoredOtpSendAttempt>("otp_send_attempts", new URLSearchParams({
     select: "id,email,ip,purpose,sent,createdAt",
     email: `eq.${email}`,
+    sent: "eq.true",
     createdAt: `gte.${cutoff}`,
     order: "createdAt.desc",
     limit: String(maxOtpSendsPerEmail + 2),
   }));
   const latestForPurpose = emailAttempts.find((item) => item.purpose === purpose);
   if (latestForPurpose && Date.now() - Date.parse(latestForPurpose.createdAt) < codeCooldownMs) {
-    return { error: "验证码刚发送过，请稍后再试", status: 429 };
+    return { error: "请等待 60 秒后再次获取验证码。", status: 429 };
   }
   if (emailAttempts.length >= maxOtpSendsPerEmail) {
-    return { error: "这个邮箱验证码请求过多，请一小时后再试", status: 429 };
+    return { error: "验证码请求过于频繁，请稍后再试。", status: 429 };
   }
   if (ip !== "unknown") {
     const ipAttempts = await dbSelect<StoredOtpSendAttempt>("otp_send_attempts", new URLSearchParams({
@@ -259,7 +281,7 @@ async function checkOtpRateLimit(email: string, purpose: StoredEmailCodePurpose,
       limit: String(maxOtpSendsPerIp + 1),
     }));
     if (ipAttempts.length >= maxOtpSendsPerIp) {
-      return { error: "验证码请求过多，请稍后再试", status: 429 };
+      return { error: "验证码请求过于频繁，请稍后再试。", status: 429 };
     }
   }
   return null;
@@ -280,6 +302,14 @@ async function recordOtpAttempt(
     sent,
     createdAt: new Date().toISOString(),
   });
+}
+
+async function removeUnsentOtpAttempt(id: string): Promise<void> {
+  try {
+    await dbDelete("otp_send_attempts", { id: `eq.${id}`, sent: "eq.false" });
+  } catch (error) {
+    console.error("[auth] Failed to remove unsent OTP attempt after email send failure.", error);
+  }
 }
 
 async function findLatestEmailCode(email: string, purpose: StoredEmailCodePurpose): Promise<StoredEmailCode | null> {
@@ -380,13 +410,14 @@ export async function registerUser(payload: Record<string, unknown>): Promise<Ap
   const name = clean(payload.name, 80) || email.split("@")[0] || "新作者";
   const password = readPassword(payload.password, "密码");
   const code = normalizeCode(payload.code);
-  if (!emailPattern.test(email)) return { error: "请填写有效邮箱" };
+  if (!emailPattern.test(email)) return { error: "请输入有效的邮箱地址。" };
   if (typeof password !== "string") return password;
-  const accessError = registrationAccessError(email, payload);
-  if (accessError) return { error: accessError };
   if (!codePattern.test(code)) return { error: "请填写六位邮箱验证码" };
 
   if (await selectUserByEmail(email)) return { error: "这个邮箱已经注册，可以直接登录" };
+  const capacityError = await registrationCapacityError();
+  if (capacityError) return capacityError;
+
   const codeResult = await consumeEmailCode(email, "register", code);
   if ("error" in codeResult) return codeResult;
 
@@ -402,8 +433,9 @@ export async function registerUser(payload: Record<string, unknown>): Promise<Ap
     createdAt: now,
     updatedAt: now,
   };
-  const inserted = await dbInsert<StoredUser>("users", user);
-  return toPublicUser(inserted[0] ?? user);
+  const inserted = await insertUserWithCapacity(user);
+  if ("error" in inserted) return inserted;
+  return toPublicUser(inserted);
 }
 
 export async function loginUser(payload: Record<string, unknown>, meta: RequestMeta = {}): Promise<AppUser | AuthFailure> {
@@ -465,19 +497,18 @@ export async function requestVerificationCode(
   const email = normalizeEmail(payload.email);
   const ip = normalizeIp(meta.ip);
   if (!purpose) return { error: "验证码用途无效" };
-  if (!emailPattern.test(email)) return { error: "请填写有效邮箱" };
+  if (!emailPattern.test(email)) return { error: "请输入有效的邮箱地址。" };
   const rateEmail = rateLimitEmail(email);
 
   await pruneAuthRecords();
-  const rateLimit = await checkOtpRateLimit(rateEmail, purpose, ip);
-  if (rateLimit) return rateLimit;
-
   const user = await selectUserByEmail(email);
   if (purpose === "register") {
-    const accessError = registrationAccessError(email, payload);
-    if (accessError) return { error: accessError, status: 403 };
     if (user) return { error: "这个邮箱已经注册，可以直接登录" };
+    const capacityError = await registrationCapacityError();
+    if (capacityError) return capacityError;
   }
+  const rateLimit = await checkOtpRateLimit(rateEmail, purpose, ip);
+  if (rateLimit) return rateLimit;
 
   const attemptId = randomBytes(16).toString("base64url");
   await recordOtpAttempt(attemptId, rateEmail, purpose, ip, false);
@@ -491,6 +522,7 @@ export async function requestVerificationCode(
   const salt = randomBytes(16).toString("base64url");
   const sendResult = await sendVerificationEmail(email, code, purpose);
   if ("error" in sendResult) {
+    await removeUnsentOtpAttempt(attemptId);
     if (purpose === "reset") {
       console.error("[auth] Reset verification email was not sent; check SES configuration and server logs.");
       await padResetCodeResponse(startedAt);
@@ -530,7 +562,7 @@ export async function resetPassword(payload: Record<string, unknown>): Promise<{
   const email = normalizeEmail(payload.email);
   const password = readPassword(payload.password, "新密码");
   const code = normalizeCode(payload.code);
-  if (!emailPattern.test(email)) return { error: "请填写有效邮箱" };
+  if (!emailPattern.test(email)) return { error: "请输入有效的邮箱地址。" };
   if (typeof password !== "string") return password;
   if (!codePattern.test(code)) return { error: "请填写六位邮箱验证码" };
 

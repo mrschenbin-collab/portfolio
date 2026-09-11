@@ -1,13 +1,13 @@
 # 视觉传达设计作品集社区
 
-这是一个约 10 名受邀作者使用的小型作品集社区。当前部署目标为：
+这是一个最多 20 名作者使用的小型作品集社区。当前部署目标为：
 
 - **Vercel Hobby**：运行 Next.js 页面和 API
 - **Supabase PostgreSQL**：保存用户、密码 Hash、作品、资料、验证码与限流记录
 - **Supabase Storage（Private）**：保存作品图片与本人图片
 - **腾讯云 SES API**：发送注册 / 找回密码验证码
 
-> Supabase 只承担数据库和私有图片存储，本项目**不使用 Supabase Auth**。原有的 scrypt 密码 Hash、HttpOnly Session、authVersion、邮箱白名单和腾讯云 SES 验证流程继续保留。
+> Supabase 只承担数据库和私有图片存储，本项目**不使用 Supabase Auth**。项目使用 scrypt 密码 Hash、HttpOnly Session、authVersion、邮箱验证码和腾讯云 SES 验证流程。
 
 ## 本地启动
 
@@ -26,6 +26,7 @@ http://localhost:3000
 
 ```text
 supabase/migrations/001_initial.sql
+supabase/migrations/002_registration_capacity.sql
 ```
 
 然后配置 `.env.local`（不要提交 Git）：
@@ -33,7 +34,6 @@ supabase/migrations/001_initial.sql
 ```text
 APP_SECRET=至少 32 字节高熵随机值
 SITE_URL=http://localhost:3000
-ALLOWED_EMAILS=user1@qq.com,user2@qq.com
 
 SUPABASE_URL=https://你的项目.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxx
@@ -44,8 +44,6 @@ TENCENT_SECRET_KEY=腾讯云 CAM 专用身份 SecretKey
 TENCENT_SES_REGION=ap-hongkong
 TENCENT_SES_FROM_EMAIL=no-reply@mail.cblworks.site
 TENCENT_SES_TEMPLATE_ID=已审核验证码模板 ID
-
-REGISTRATION_CODE=可选；邮箱白名单之外的第二层邀请校验
 ```
 
 开发环境若没有配置腾讯云 SES，会返回仅供本地开发使用的测试验证码；Production 不会把验证码返回浏览器。
@@ -68,7 +66,7 @@ REGISTRATION_CODE=可选；邮箱白名单之外的第二层邀请校验
 - 密码只保存 `scrypt` Hash + Salt，不保存明文密码。
 - 修改 / 重置密码会递增 `authVersion`，使旧 Session 失效。
 - Session Cookie 使用 HttpOnly、SameSite=Lax，Production 使用 Secure。
-- 注册默认关闭，只允许 `ALLOWED_EMAILS` 中的邮箱注册。
+- 任意合法邮箱可申请注册；全站最多 20 个正式账号。
 - 验证码有邮箱/IP限流、尝试次数与过期限制。
 - 登录有邮箱/IP失败次数限制。
 - Supabase Secret Key 只允许出现在 Vercel Server 环境变量，禁止添加 `NEXT_PUBLIC_` 前缀。

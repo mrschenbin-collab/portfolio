@@ -44,8 +44,37 @@ test("passwords remain hashed and session cookies remain HttpOnly", async () => 
 test("required Vercel and Supabase files exist", async () => {
   await Promise.all([
     "supabase/migrations/001_initial.sql",
+    "supabase/migrations/002_registration_capacity.sql",
     "app/api/admin/uploads/sign/route.ts",
     "app/work/page.tsx",
     "app/work/[slug]/page.tsx",
   ].map((path) => access(new URL(`../${path}`, import.meta.url))));
+});
+
+test("registration uses open email signups with a race-safe 20-user cap", async () => {
+  const [auth, migration, envExample] = await Promise.all([
+    read("lib/auth.ts"),
+    read("supabase/migrations/002_registration_capacity.sql"),
+    read(".env.example"),
+  ]);
+
+  assert.doesNotMatch(auth, /ALLOWED_EMAILS|allowedEmailSet|registrationAccessError|REGISTRATION_CODE/);
+  assert.doesNotMatch(envExample, /ALLOWED_EMAILS|REGISTRATION_CODE/);
+  assert.match(auth, /const maxRegisteredUsers = 20/);
+  assert.match(auth, /register_user_with_capacity/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /select count\(\*\) from public\.users/);
+  assert.match(migration, /MAX_REGISTERED_USERS_REACHED/);
+});
+
+test("OTP send limits use the 10-minute window and no one-hour lockout", async () => {
+  const auth = await read("lib/auth.ts");
+
+  assert.match(auth, /const codeCooldownMs = 60 \* 1000/);
+  assert.match(auth, /const otpWindowMs = 10 \* 60 \* 1000/);
+  assert.match(auth, /const maxOtpSendsPerEmail = 5/);
+  assert.match(auth, /sent:\s*"eq\.true"/);
+  assert.match(auth, /请等待 60 秒后再次获取验证码。/);
+  assert.match(auth, /验证码请求过于频繁，请稍后再试。/);
+  assert.doesNotMatch(auth, /一小时后再试|请填写有效邮箱|白名单|注册名单/);
 });

@@ -21,6 +21,7 @@ Secret Key 是服务器主密钥，只放在 Vercel 环境变量，不要复制�
 
 ```text
 supabase/migrations/001_initial.sql
+supabase/migrations/002_registration_capacity.sql
 ```
 
 该脚本会创建：
@@ -80,7 +81,6 @@ npm run build
 ```text
 APP_SECRET=<32字节以上随机高熵值>
 SITE_URL=https://你的项目.vercel.app
-ALLOWED_EMAILS=你的测试QQ邮箱
 
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_xxxxx
@@ -97,16 +97,12 @@ TENCENT_SES_FROM_EMAIL=no-reply@mail.cblworks.site
 TENCENT_SES_TEMPLATE_ID=...
 ```
 
-`REGISTRATION_CODE` 可选。即使不配置邀请码，没有出现在 `ALLOWED_EMAILS` 的邮箱也无法注册。
-
 ## 6. 首次部署验证
-
-先只把自己的测试邮箱放入 `ALLOWED_EMAILS`。
 
 依次验证：
 
 1. 首页 / 登录页正常。
-2. 测试邮箱可以注册，非白名单邮箱不能获取注册验证码。
+2. 任意合法邮箱可以申请注册验证码；全站达到 20 个正式账号后不能创建第 21 个。
 3. 登录成功后 `/work`、`/community`、`/admin` 正常。
 4. 创建作品正常。
 5. 上传 5MB 以上图片，确认图片是浏览器直接发往 Supabase Storage，而不是经过 Vercel Function 请求体。

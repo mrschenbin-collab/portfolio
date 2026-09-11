@@ -210,6 +210,12 @@ export async function dbDelete<T>(
   return dataOrThrow<T>(result, `Supabase delete ${table}`);
 }
 
+export async function dbRpc<T>(name: string, args: Record<string, unknown>): Promise<T[]> {
+  const result = await supabaseServerClient()
+    .rpc(name, args) as SupabaseResult<T[]>;
+  return dataOrThrow<T>(result, `Supabase rpc ${name}`);
+}
+
 function storageBase(): string {
   return `${config().url}/storage/v1`;
 }

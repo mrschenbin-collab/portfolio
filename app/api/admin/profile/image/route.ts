@@ -2,13 +2,15 @@ import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { deleteImageFile, finalizeImageUpload } from "@/lib/file-media";
 import { getProfile, saveProfile, toStoredProfile } from "@/lib/profile";
 
+const maxProfileImages = 3;
+
 export async function POST(request: Request) {
   let storedKey = "";
   try {
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const current = await getProfile(user.id);
-    if (current.imageKeys.length >= 5) return Response.json({ error: "本人介绍最多上传五张图片" }, { status: 400 });
+    if (current.imageKeys.length >= maxProfileImages) return Response.json({ error: "本人介绍最多上传三张图片" }, { status: 400 });
 
     const payload = await request.json() as Record<string, unknown>;
     const tempKey = typeof payload.tempKey === "string" ? payload.tempKey : "";

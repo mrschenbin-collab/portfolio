@@ -29,11 +29,20 @@ export default async function CommunityProjectPage({ params }: { params: Promise
   const all = await getCommunityProjects(user.id);
   const currentIndex = all.findIndex((item) => item.id === project.id);
   const next = all.length > 1 ? all[(currentIndex + 1) % all.length] : null;
-  const galleryImages = project.images.map((image, index) => ({
-    id: image.id,
-    url: image.url,
-    altText: image.altText || `${project.title}作品图 ${index + 1}`,
-  }));
+  const galleryItems = [
+    ...project.images.map((image, index) => ({
+      id: `image-${image.id}`,
+      url: image.url,
+      altText: image.altText || `${project.title}作品图 ${index + 1}`,
+      type: "image" as const,
+    })),
+    ...project.videos.map((video, index) => ({
+      id: `video-${video.id}`,
+      url: video.url,
+      altText: video.altText || `${project.title}视频 ${index + 1}`,
+      type: "video" as const,
+    })),
+  ];
 
   return <main className="project-page">
     <section className="project-detail section-pad">
@@ -50,9 +59,9 @@ export default async function CommunityProjectPage({ params }: { params: Promise
       </aside>
       <div className="project-detail-body">
         <ImageLightbox
-          images={galleryImages}
-          className={`project-image-grid image-count-${Math.min(galleryImages.length, 12)}`}
-          empty={<div className={`project-image-empty art-surface ${project.tone}`} data-image-reveal><strong>{project.title}</strong><small>作品图片待上传</small></div>}
+          images={galleryItems}
+          className={`project-image-grid media-count-${galleryItems.length}`}
+          empty={<div className={`project-image-empty art-surface ${project.tone}`} data-image-reveal><strong>{project.title}</strong><small>作品图片或视频待上传</small></div>}
         />
         <div className="project-detail-copy">
           <article>

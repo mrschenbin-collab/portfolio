@@ -6,6 +6,7 @@ export type LightboxImage = {
   id: string | number;
   url: string;
   altText: string;
+  type?: "image" | "video";
 };
 
 export function ImageLightbox({
@@ -20,6 +21,7 @@ export function ImageLightbox({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
   const activeImage = activeIndex === null ? null : images[activeIndex];
+  const activeType = activeImage?.type ?? "image";
 
   function open(index: number) {
     setActiveIndex(index);
@@ -56,25 +58,32 @@ export function ImageLightbox({
 
   return <>
     {images.length ? <div className={className}>
-      {images.map((image, index) => <button className="lightbox-thumb" type="button" key={image.id} onClick={() => open(index)} aria-label={`查看大图：${image.altText}`}>
-        <img src={image.url} alt={image.altText} loading={index > 0 ? "lazy" : undefined} />
+      {images.map((image, index) => <button className="lightbox-thumb" type="button" key={image.id} onClick={() => open(index)} aria-label={`${image.type === "video" ? "播放视频" : "查看大图"}：${image.altText}`}>
+        {image.type === "video" ? <>
+          <video src={image.url} muted playsInline preload="metadata" />
+          <span className="media-badge">视频</span>
+        </> : <img src={image.url} alt={image.altText} loading={index > 0 ? "lazy" : undefined} />}
       </button>)}
     </div> : empty}
 
-    {activeImage ? <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="图片查看器" onClick={close}>
+    {activeImage ? <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="媒体查看器" onClick={close}>
       <div className="lightbox-shell" onClick={(event) => event.stopPropagation()}>
         <div className="lightbox-toolbar">
           <span>{activeImage.altText}</span>
           <div>
-            <button type="button" onClick={() => setZoom((value) => Math.max(0.6, value - 0.2))}>缩小</button>
-            <button type="button" onClick={() => setZoom(1)}>还原</button>
-            <button type="button" onClick={() => setZoom((value) => Math.min(3, value + 0.2))}>放大</button>
+            {activeType === "image" ? <>
+              <button type="button" onClick={() => setZoom((value) => Math.max(0.6, value - 0.2))}>缩小</button>
+              <button type="button" onClick={() => setZoom(1)}>还原</button>
+              <button type="button" onClick={() => setZoom((value) => Math.min(3, value + 0.2))}>放大</button>
+            </> : null}
             <button type="button" onClick={close}>关闭</button>
           </div>
         </div>
         <div className="lightbox-stage">
           {images.length > 1 ? <button className="lightbox-nav prev" type="button" onClick={() => move(-1)} aria-label="上一张">←</button> : null}
-          <img src={activeImage.url} alt={activeImage.altText} style={{ transform: `scale(${zoom})` }} />
+          {activeType === "video"
+            ? <video src={activeImage.url} controls autoPlay playsInline />
+            : <img src={activeImage.url} alt={activeImage.altText} style={{ transform: `scale(${zoom})` }} />}
           {images.length > 1 ? <button className="lightbox-nav next" type="button" onClick={() => move(1)} aria-label="下一张">→</button> : null}
         </div>
       </div>

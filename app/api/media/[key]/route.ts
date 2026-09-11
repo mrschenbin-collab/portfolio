@@ -1,4 +1,4 @@
-import { createImageReadUrl } from "@/lib/file-media";
+import { createMediaReadUrl } from "@/lib/file-media";
 import { getCurrentUser } from "@/lib/auth";
 import { canReadMediaKey } from "@/lib/portfolio";
 
@@ -7,11 +7,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
   if (!user) return new Response("请先登录", { status: 401, headers: { "cache-control": "no-store" } });
 
   const key = (await params).key;
-  if (!await canReadMediaKey(user.id, key)) return new Response("图片不存在", { status: 404, headers: { "cache-control": "no-store" } });
+  if (!await canReadMediaKey(user.id, key)) return new Response("媒体不存在", { status: 404, headers: { "cache-control": "no-store" } });
 
   try {
-    const signedUrl = await createImageReadUrl(key, 60);
-    if (!signedUrl) return new Response("图片不存在", { status: 404, headers: { "cache-control": "no-store" } });
+    const signedUrl = await createMediaReadUrl(key, 60);
+    if (!signedUrl) return new Response("媒体不存在", { status: 404, headers: { "cache-control": "no-store" } });
     return new Response(null, {
       status: 307,
       headers: {
@@ -21,6 +21,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
       },
     });
   } catch {
-    return new Response("图片暂时无法读取", { status: 503, headers: { "cache-control": "no-store" } });
+    return new Response("媒体暂时无法读取", { status: 503, headers: { "cache-control": "no-store" } });
   }
 }

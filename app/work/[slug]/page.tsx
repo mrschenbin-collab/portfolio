@@ -22,11 +22,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
   const all = await getPublishedProjects(user.id);
   const currentIndex = all.findIndex((item) => item.slug === project.slug);
   const next = all.length > 1 ? all[(currentIndex + 1) % all.length] : null;
-  const galleryImages = project.images.map((image, index) => ({
-    id: image.id,
-    url: image.url,
-    altText: image.altText || `${project.title}作品图 ${index + 1}`,
-  }));
+  const galleryItems = [
+    ...project.images.map((image, index) => ({
+      id: `image-${image.id}`,
+      url: image.url,
+      altText: image.altText || `${project.title}作品图 ${index + 1}`,
+      type: "image" as const,
+    })),
+    ...project.videos.map((video, index) => ({
+      id: `video-${video.id}`,
+      url: video.url,
+      altText: video.altText || `${project.title}视频 ${index + 1}`,
+      type: "video" as const,
+    })),
+  ];
 
   return <main className="project-page">
     <section className="project-detail section-pad">
@@ -37,15 +46,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
           <div><dt>设计年份</dt><dd>{project.year}</dd></div>
           <div><dt>设计主题</dt><dd>{project.category}</dd></div>
         </dl>
+        <dl className="project-summary-meta"><div><dt>作品概述</dt><dd>{project.summary || "作品概述待补充。"}</dd></div></dl>
         <ProjectOwnerActions projectId={project.id} initialStatus={project.status} />
-        {project.summary ? <dl className="project-summary-meta"><div><dt>作品概述</dt><dd>{project.summary}</dd></div></dl> : null}
         {project.tags.length ? <ul>{project.tags.map((tag) => <li key={tag}>{tag}</li>)}</ul> : null}
       </aside>
       <div className="project-detail-body">
         <ImageLightbox
-          images={galleryImages}
-          className={`project-image-grid image-count-${Math.min(galleryImages.length, 12)}`}
-          empty={<div className={`project-image-empty art-surface ${project.tone}`} data-image-reveal><strong>{project.title}</strong><small>作品图片待上传</small></div>}
+          images={galleryItems}
+          className={`project-image-grid media-count-${galleryItems.length}`}
+          empty={<div className={`project-image-empty art-surface ${project.tone}`} data-image-reveal><strong>{project.title}</strong><small>作品图片或视频待上传</small></div>}
         />
         <div className="project-detail-copy">
           <article>

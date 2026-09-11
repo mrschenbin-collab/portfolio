@@ -3,6 +3,8 @@ import { mediaUrl } from "@/lib/file-media";
 import type { StoredProfile } from "@/lib/file-store";
 import { dbSelect, dbUpsert } from "@/lib/supabase";
 
+const maxProfileImages = 3;
+
 export type ProfileContent = {
   roleZh: string;
   intro: string;
@@ -32,7 +34,7 @@ function parseImageKeys(payload: Record<string, unknown>): string[] {
     : payload.imageKey
       ? [payload.imageKey]
       : [];
-  return [...new Set(values.map(cleanImageKey).filter(Boolean))].slice(0, 5);
+  return [...new Set(values.map(cleanImageKey).filter(Boolean))].slice(0, maxProfileImages);
 }
 
 function parseFocus(value: unknown): string[] {
@@ -48,12 +50,13 @@ function withImageUrl(profile: ProfileInput): ProfileContent {
     : profile.imageKey
       ? [profile.imageKey]
       : [];
+  const limitedImageKeys = imageKeys.slice(0, maxProfileImages);
   return {
     ...profile,
-    imageKey: imageKeys[0] ?? "",
-    imageKeys,
-    imageUrl: imageKeys[0] ? mediaUrl(imageKeys[0]) : "",
-    imageUrls: imageKeys.map((key) => mediaUrl(key)),
+    imageKey: limitedImageKeys[0] ?? "",
+    imageKeys: limitedImageKeys,
+    imageUrl: limitedImageKeys[0] ? mediaUrl(limitedImageKeys[0]) : "",
+    imageUrls: limitedImageKeys.map((key) => mediaUrl(key)),
   };
 }
 

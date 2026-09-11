@@ -45,6 +45,16 @@ export type StoredProjectImage = {
   createdAt: string;
 };
 
+export type StoredProjectVideo = {
+  id: number;
+  authorId: string;
+  projectId: number;
+  objectKey: string;
+  altText: string;
+  sortOrder: number;
+  createdAt: string;
+};
+
 export type StoredProfile = {
   authorId?: string;
   roleZh: string;

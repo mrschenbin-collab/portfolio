@@ -8,7 +8,9 @@ import { readApiResponse } from "@/lib/api-response";
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_PROJECT_IMAGES = 12;
-const MAX_PROFILE_IMAGES = 5;
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+const MAX_PROJECT_VIDEOS = 4;
+const MAX_PROFILE_IMAGES = 3;
 
 type FormState = {
   slug: string;
@@ -116,8 +118,10 @@ export function AdminManager({
   const [contactForm, setContactForm] = useState<ContactFormState>(emptyContactForm);
   const [profileForm, setProfileForm] = useState<ProfileFormState>(() => toProfileForm(initialProfile));
   const [files, setFiles] = useState<File[]>([]);
+  const [videoFiles, setVideoFiles] = useState<File[]>([]);
   const [profileFiles, setProfileFiles] = useState<File[]>([]);
   const [fileKey, setFileKey] = useState(0);
+  const [videoFileKey, setVideoFileKey] = useState(0);
   const [profileFileKey, setProfileFileKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [contactBusy, setContactBusy] = useState(false);
@@ -140,7 +144,9 @@ export function AdminManager({
     setEditingId(null);
     setForm(emptyForm());
     setFiles([]);
+    setVideoFiles([]);
     setFileKey((value) => value + 1);
+    setVideoFileKey((value) => value + 1);
     setMessage("");
     setError("");
     document.getElementById("project-form")?.scrollIntoView({ behavior: "smooth" });
@@ -150,7 +156,9 @@ export function AdminManager({
     setEditingId(project.id);
     setForm(toForm(project));
     setFiles([]);
+    setVideoFiles([]);
     setFileKey((value) => value + 1);
+    setVideoFileKey((value) => value + 1);
     setMessage("");
     setError("");
     document.getElementById("project-form")?.scrollIntoView({ behavior: "smooth" });
@@ -184,6 +192,27 @@ export function AdminManager({
     return ticket.tempKey;
   }
 
+  async function stageVideoUpload(file: File): Promise<string> {
+    const ticket = await request<{ error?: string; tempKey?: string; signedUrl?: string }>("/api/admin/uploads/sign", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "video", name: file.name, type: file.type, size: file.size }),
+    });
+    if (!ticket.tempKey || !ticket.signedUrl) throw new Error("无法创建视频上传凭据");
+
+    const upload = await fetch(ticket.signedUrl, {
+      method: "PUT",
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "cache-control": "max-age=0",
+        "x-upsert": "false",
+      },
+      body: file,
+    });
+    if (!upload.ok) throw new Error(`“${file.name}”上传到视频存储失败，请重试。`);
+    return ticket.tempKey;
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -201,6 +230,16 @@ export function AdminManager({
       const oversizedFile = files.find((file) => file.size > MAX_IMAGE_BYTES);
       if (oversizedFile) {
         throw new Error(`“${oversizedFile.name}”超过十五兆，请压缩后重试。`);
+      }
+      if (videoFiles.length > MAX_PROJECT_VIDEOS) {
+        throw new Error("每个作品最多上传四个视频。");
+      }
+      if ((currentProject?.videos.length ?? 0) + videoFiles.length > MAX_PROJECT_VIDEOS) {
+        throw new Error("当前已有视频加上新上传视频不能超过四个。");
+      }
+      const oversizedVideoFile = videoFiles.find((file) => file.size > MAX_VIDEO_BYTES);
+      if (oversizedVideoFile) {
+        throw new Error(`“${oversizedVideoFile.name}”超过 200MB，请压缩后重试。`);
       }
 
       let projectId = editingId;
@@ -226,8 +265,18 @@ export function AdminManager({
         }
       }
 
+      if (projectId && videoFiles.length) {
+        for (const file of videoFiles) {
+          const tempKey = await stageVideoUpload(file);
+          await request(`/api/admin/projects/${projectId}/videos`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ tempKey }),
+          });
+        }
+      }
+
       if (projectId && editingId) {
-        const currentProject = projects.find((project) => project.id === editingId);
         await request(`/api/admin/projects/${projectId}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -239,13 +288,15 @@ export function AdminManager({
       setEditingId(null);
       setForm(emptyForm());
       setFiles([]);
+      setVideoFiles([]);
       setFileKey((value) => value + 1);
+      setVideoFileKey((value) => value + 1);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : "保存失败";
       if (createdProjectId) {
         await refresh().catch(() => undefined);
         setEditingId(createdProjectId);
-        setError(`作品资料已保存，但图片上传失败：${detail} 请直接重试，无需重新创建。`);
+        setError(`作品资料已保存，但媒体上传失败：${detail} 请直接重试，无需重新创建。`);
       } else {
         setError(detail);
       }
@@ -269,7 +320,7 @@ export function AdminManager({
   }
 
   async function removeProject(project: PortfolioProject) {
-    if (!window.confirm(`确定永久删除“${project.title}”吗？相关图片也会删除。`)) return;
+    if (!window.confirm(`确定永久删除“${project.title}”吗？相关图片和视频也会删除。`)) return;
     setBusy(true);
     setError("");
     try {
@@ -298,6 +349,20 @@ export function AdminManager({
     }
   }
 
+  async function removeVideo(videoId: number) {
+    if (!window.confirm("确定删除这个视频吗？")) return;
+    setBusy(true);
+    try {
+      await request(`/api/admin/videos/${videoId}`, { method: "DELETE" });
+      await refresh();
+      setMessage("视频已删除");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "删除失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProfileBusy(true);
@@ -305,7 +370,7 @@ export function AdminManager({
     setProfileMessage("");
     try {
       if (profile.imageKeys.length + profileFiles.length > MAX_PROFILE_IMAGES) {
-        throw new Error("本人介绍最多上传五张图片。");
+        throw new Error("本人介绍最多上传三张图片。");
       }
       const oversizedProfileFile = profileFiles.find((file) => file.size > MAX_IMAGE_BYTES);
       if (oversizedProfileFile) {
@@ -442,12 +507,18 @@ export function AdminManager({
 
   return <div className="admin-accordion">
     <details className="admin-panel">
-      <summary><span>作品提交</span><small>新增作品、修改内容、上传图片，作品详情页可下架</small></summary>
+      <summary><span>作品提交</span><small>新增作品、修改内容、上传图片或视频，作品详情页可下架</small></summary>
       <div className="admin-workspace">
         <section className="admin-list" aria-labelledby="project-list-title">
           <div className="admin-section-head"><div><p className="eyebrow">作品提交</p><h2 id="project-list-title">我的项目</h2></div><button type="button" onClick={startNew}>新增作品</button></div>
           {projects.length ? <div className="admin-projects">{projects.map((project) => <article key={project.id} className="admin-project-row">
-            <div className={`admin-thumb ${project.tone}`}>{project.images[0] ? <img src={project.images[0].url} alt="" /> : <span>{project.title.slice(0, 1)}</span>}</div>
+            <div className={`admin-thumb ${project.tone}`}>
+              {project.images[0]
+                ? <img src={project.images[0].url} alt="" />
+                : project.videos[0]
+                  ? <video src={project.videos[0].url} muted playsInline preload="metadata" />
+                  : <span>{project.title.slice(0, 1)}</span>}
+            </div>
             <div><h3>{project.title}</h3><p>{project.category} · {project.year}</p></div>
             <span className={`status-badge ${project.status}`}>{project.status === "published" ? "展示中" : "已下架"}</span>
             <div className="admin-row-actions"><button type="button" onClick={() => startEdit(project)}>修改</button>{project.status === "draft" ? <button type="button" onClick={() => restoreProject(project)} disabled={busy}>重新展示</button> : null}<button type="button" className="danger" onClick={() => removeProject(project)} disabled={busy}>删除</button></div>
@@ -467,9 +538,11 @@ export function AdminManager({
             <label><span>标签</span><input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder="用逗号分隔" /></label>
             <label className="checkbox-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} /><span>设为精选</span></label>
             <label className="form-wide upload-field"><span>作品图片</span><input key={fileKey} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><small>一次可选多张；系统会逐张上传。单张不超过十五兆，每个项目最多十二张。</small></label>
+            <label className="form-wide upload-field"><span>视频作品</span><input key={videoFileKey} type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v" multiple onChange={(event) => setVideoFiles(Array.from(event.target.files ?? []))} /><small>视频单独作为作品媒体；支持 MP4、WEBM、MOV、M4V。单个不超过 200MB，每个项目最多四个视频。</small></label>
           </div>
-          {editingProject?.images.length ? <div className="admin-image-grid">{editingProject.images.map((image) => <figure key={image.id}><img src={image.url} alt={image.altText} /><button type="button" onClick={() => removeImage(image.id)} disabled={busy}>删除图片</button></figure>)}</div> : null}
-          <div className="form-actions"><button type="submit" disabled={busy}>{busy ? "正在保存…" : editingId ? "保存修改" : "提交作品"}</button><span>提交后会显示在你的作品页；进入作品详情页左下角可以下架。</span></div>
+          {editingProject?.images.length ? <div className="admin-media-block"><p>已上传图片</p><div className="admin-image-grid">{editingProject.images.map((image) => <figure key={image.id}><img src={image.url} alt={image.altText} /><button type="button" onClick={() => removeImage(image.id)} disabled={busy}>删除图片</button></figure>)}</div></div> : null}
+          {editingProject?.videos.length ? <div className="admin-media-block"><p>已上传视频</p><div className="admin-video-grid">{editingProject.videos.map((video) => <figure key={video.id}><video src={video.url} controls preload="metadata" /><button type="button" onClick={() => removeVideo(video.id)} disabled={busy}>删除视频</button></figure>)}</div></div> : null}
+          <div className="form-actions"><button type="submit" disabled={busy}>{busy ? "正在保存…" : editingId ? "保存修改" : "提交作品"}</button><span>提交后会显示在你的作品页；进入作品详情页可在作品概述下方下架。</span></div>
           {message ? <p className="form-message" role="status">{message}</p> : null}
           {error ? <p className="form-message error" role="alert">{error}</p> : null}
         </form>
@@ -487,7 +560,7 @@ export function AdminManager({
               <button type="button" className="quiet" onClick={() => removeProfileImage(profile.imageKeys[index])} disabled={profileBusy}>删除</button>
             </figure>) : <figure className="profile-admin-empty"><div><span>本人图片</span><small>尚未上传</small></div></figure>}
           </div>
-          <label className="upload-field"><span>上传本人图片</span><input key={profileFileKey} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(event) => setProfileFiles(Array.from(event.target.files ?? []))} /><small>最多五张；第一张会作为本人介绍页的大图，后面作为生活照、工作照等附属图片。单张不超过十五兆。</small></label>
+          <label className="upload-field"><span>上传本人图片</span><input key={profileFileKey} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(event) => setProfileFiles(Array.from(event.target.files ?? []))} /><small>最多三张；第一张会作为本人介绍页的大图，后两张作为生活照、工作照等附属图片。单张不超过十五兆。</small></label>
         </div>
         <div className="form-grid">
           <label><span>身份介绍</span><input required value={profileForm.roleZh} onChange={(event) => setProfileForm({ ...profileForm, roleZh: event.target.value })} placeholder="例如：视觉传达设计创作者" /></label>

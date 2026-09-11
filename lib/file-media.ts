@@ -17,15 +17,28 @@ export const allowedImageTypes = new Map([
   ["image/gif", "gif"],
 ]);
 
+export const allowedVideoTypes = new Map([
+  ["video/mp4", "mp4"],
+  ["video/webm", "webm"],
+  ["video/quicktime", "mov"],
+  ["video/x-m4v", "m4v"],
+]);
+
 const maxImageBytes = 15 * 1024 * 1024;
 const maxImageSide = 12000;
 const maxImagePixels = 80_000_000;
+const maxVideoBytes = 200 * 1024 * 1024;
 const tempPrefix = "tmp";
 const mediaPrefix = "media";
 
 type DetectedImage = {
   extension: "jpg" | "png" | "webp" | "gif";
   contentType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+};
+
+type DetectedVideo = {
+  extension: "mp4" | "webm" | "mov" | "m4v";
+  contentType: "video/mp4" | "video/webm" | "video/quicktime" | "video/x-m4v";
 };
 
 export type ImageUploadTicket = {
@@ -68,6 +81,25 @@ function detectImage(buffer: Buffer): DetectedImage | null {
   if (buffer.length >= 6) {
     const signature = buffer.toString("ascii", 0, 6);
     if (signature === "GIF87a" || signature === "GIF89a") return { extension: "gif", contentType: "image/gif" };
+  }
+  return null;
+}
+
+function detectVideo(buffer: Buffer, declaredType = ""): DetectedVideo | null {
+  if (buffer.length >= 12 && buffer.toString("ascii", 4, 8) === "ftyp") {
+    const brand = buffer.toString("ascii", 8, 12);
+    if (brand === "qt  ") return { extension: "mov", contentType: "video/quicktime" };
+    if (declaredType === "video/x-m4v") return { extension: "m4v", contentType: "video/x-m4v" };
+    return { extension: "mp4", contentType: "video/mp4" };
+  }
+  if (
+    buffer.length >= 4
+    && buffer[0] === 0x1a
+    && buffer[1] === 0x45
+    && buffer[2] === 0xdf
+    && buffer[3] === 0xa3
+  ) {
+    return { extension: "webm", contentType: "video/webm" };
   }
   return null;
 }
@@ -120,6 +152,24 @@ async function prepareImageBuffer(original: Buffer, declaredType = ""): Promise<
   return { extension: "gif", contentType: "image/gif", body: original };
 }
 
+function prepareVideoBuffer(original: Buffer, declaredType = ""): { body: Buffer; extension: DetectedVideo["extension"]; contentType: DetectedVideo["contentType"] } {
+  if (!original.length || original.length > maxVideoBytes) throw new Error("单个视频不能超过 200MB");
+  if (declaredType && !allowedVideoTypes.has(declaredType)) throw new Error("仅支持 MP4、WEBM、MOV 或 M4V 视频");
+
+  const detected = detectVideo(original, declaredType);
+  if (!detected) throw new Error("视频格式无效，请上传真实的 MP4、WEBM、MOV 或 M4V 文件");
+  if (
+    declaredType
+    && declaredType !== detected.contentType
+    && !(declaredType === "video/quicktime" && detected.contentType === "video/mp4")
+    && !(declaredType === "video/mp4" && detected.contentType === "video/quicktime")
+  ) {
+    throw new Error("视频实际格式与文件类型不一致，请重新导出后上传");
+  }
+
+  return { ...detected, body: original };
+}
+
 export async function createImageUploadTicket(
   userId: string,
   input: { name?: unknown; type?: unknown; size?: unknown },
@@ -130,6 +180,22 @@ export async function createImageUploadTicket(
   if (!allowedImageTypes.has(declaredType)) throw new Error("仅支持 JPG、PNG、WEBP 或 GIF 图片");
 
   const extension = allowedImageTypes.get(declaredType) ?? "bin";
+  const userSegment = safeSegment(userId, "user");
+  const tempKey = `${tempPrefix}/${userSegment}/${Date.now()}-${randomUUID()}.${extension}`;
+  const { signedUrl } = await createSignedStorageUpload(tempKey);
+  return { tempKey, signedUrl };
+}
+
+export async function createVideoUploadTicket(
+  userId: string,
+  input: { name?: unknown; type?: unknown; size?: unknown },
+): Promise<ImageUploadTicket> {
+  const size = Number(input.size);
+  const declaredType = typeof input.type === "string" ? input.type : "";
+  if (!Number.isFinite(size) || size <= 0 || size > maxVideoBytes) throw new Error("单个视频不能超过 200MB");
+  if (!allowedVideoTypes.has(declaredType)) throw new Error("仅支持 MP4、WEBM、MOV 或 M4V 视频");
+
+  const extension = allowedVideoTypes.get(declaredType) ?? "bin";
   const userSegment = safeSegment(userId, "user");
   const tempKey = `${tempPrefix}/${userSegment}/${Date.now()}-${randomUUID()}.${extension}`;
   const { signedUrl } = await createSignedStorageUpload(tempKey);
@@ -160,14 +226,45 @@ export async function finalizeImageUpload(userId: string, tempKey: string, prefi
   }
 }
 
+export async function finalizeVideoUpload(userId: string, tempKey: string, prefix: string): Promise<string> {
+  const userSegment = safeSegment(userId, "user");
+  const normalizedTempKey = String(tempKey || "").replace(/^\/+/, "");
+  if (!normalizedTempKey.startsWith(`${tempPrefix}/${userSegment}/`) || normalizedTempKey.includes("..")) {
+    throw new Error("临时上传凭据无效");
+  }
+
+  try {
+    const temporary = await downloadStorageObject(normalizedTempKey);
+    if (temporary.body.length > maxVideoBytes) throw new Error("单个视频不能超过 200MB");
+    const storedType = temporary.contentType.split(";")[0]?.trim() ?? "";
+    const declaredType = allowedVideoTypes.has(storedType) ? storedType : "";
+    const prepared = prepareVideoBuffer(temporary.body, declaredType);
+
+    const safePrefix = safeSegment(prefix, "video").slice(0, 32);
+    const key = `${safePrefix}-${randomUUID()}.${prepared.extension}`;
+    await uploadStorageObject(`${mediaPrefix}/${key}`, prepared.body, prepared.contentType);
+    return key;
+  } finally {
+    await removeStorageObjects([normalizedTempKey]).catch(() => undefined);
+  }
+}
+
 export async function deleteImageFile(key: string): Promise<void> {
   const safeKey = cleanMediaKey(key);
   if (!safeKey) return;
   await removeStorageObjects([`${mediaPrefix}/${safeKey}`]);
 }
 
-export async function createImageReadUrl(key: string, expiresIn = 60): Promise<string | null> {
+export async function deleteVideoFile(key: string): Promise<void> {
+  await deleteImageFile(key);
+}
+
+export async function createMediaReadUrl(key: string, expiresIn = 60): Promise<string | null> {
   const safeKey = cleanMediaKey(key);
   if (!safeKey) return null;
   return createSignedStorageReadUrl(`${mediaPrefix}/${safeKey}`, expiresIn);
+}
+
+export async function createImageReadUrl(key: string, expiresIn = 60): Promise<string | null> {
+  return createMediaReadUrl(key, expiresIn);
 }

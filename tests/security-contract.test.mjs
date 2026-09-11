@@ -29,7 +29,7 @@ test("large images use direct signed upload and signed private reads", async () 
   assert.match(manager, /stageImageUpload/);
   assert.match(manager, /ticket\.signedUrl/);
   assert.match(manager, /method: "PUT"/);
-  assert.match(mediaRoute, /createImageReadUrl/);
+  assert.match(mediaRoute, /createMediaReadUrl/);
   assert.match(mediaRoute, /status: 307/);
 });
 
@@ -45,10 +45,32 @@ test("required Vercel and Supabase files exist", async () => {
   await Promise.all([
     "supabase/migrations/001_initial.sql",
     "supabase/migrations/002_registration_capacity.sql",
+    "supabase/migrations/003_project_videos.sql",
     "app/api/admin/uploads/sign/route.ts",
+    "app/api/admin/projects/[id]/videos/route.ts",
+    "app/api/admin/videos/[id]/route.ts",
     "app/work/page.tsx",
     "app/work/[slug]/page.tsx",
   ].map((path) => access(new URL(`../${path}`, import.meta.url))));
+});
+
+test("video uploads stay private and server validated", async () => {
+  const [media, signRoute, migration, portfolio] = await Promise.all([
+    read("lib/file-media.ts"),
+    read("app/api/admin/uploads/sign/route.ts"),
+    read("supabase/migrations/003_project_videos.sql"),
+    read("lib/portfolio.ts"),
+  ]);
+
+  assert.match(media, /allowedVideoTypes/);
+  assert.match(media, /const maxVideoBytes = 200 \* 1024 \* 1024/);
+  assert.match(media, /detectVideo/);
+  assert.match(media, /finalizeVideoUpload/);
+  assert.match(signRoute, /payload\.kind === "video"/);
+  assert.match(portfolio, /project_videos/);
+  assert.match(migration, /public\.project_videos/);
+  assert.match(migration, /video\/mp4/);
+  assert.match(migration, /209715200/);
 });
 
 test("registration uses open email signups with a race-safe 20-user cap", async () => {

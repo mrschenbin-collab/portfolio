@@ -187,6 +187,7 @@ test("renders the work page as image-led project cards", async () => {
           createdAt: "",
           updatedAt: "",
           images: [{ id: 1, url: "/api/media/poster.png", altText: "海报实验", sortOrder: 0 }],
+          videos: [],
         },
       ],
     }),
@@ -225,6 +226,7 @@ test("renders community cards as author-labeled read-only entries", async () => 
           createdAt: "",
           updatedAt: "",
           images: [],
+          videos: [],
         },
       ],
     }),
@@ -266,7 +268,7 @@ test("normalizes editable profile content for the introduction page", async () =
   assert.equal("error" in result, false);
   assert.deepEqual(result.focus, ["品牌设计", "海报设计", "编辑设计"]);
   assert.equal(result.imageKey, "profile-demo.png");
-  assert.equal(result.imageKeys.length, 5);
+  assert.equal(result.imageKeys.length, 3);
 });
 
 test("keeps project detail images out of the page background", async () => {
@@ -302,10 +304,11 @@ test("keeps uploaded artwork uncropped and owner action inline", async () => {
     readFile(path.join(root, "app", "work", "[slug]", "page.tsx"), "utf8"),
   ]);
 
-  assert.match(css, /\.profile-photo-cluster\s*\{[^}]*align-items:\s*end/s);
-  assert.doesNotMatch(css, /profile-photo-cluster \.lightbox-thumb:first-child\s*\{\s*grid-row:\s*span 2/);
-  assert.match(css, /\.project-card-image img\s*\{[^}]*height:\s*auto;[^}]*object-fit:\s*contain/s);
-  assert.match(css, /\.project-image-grid \.lightbox-thumb img\s*\{[^}]*height:\s*auto;[^}]*object-fit:\s*contain/s);
+  assert.match(css, /\.profile-photo-cluster\s*\{[^}]*grid-template-rows:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.profile-photo-cluster \.lightbox-thumb:first-child\s*\{[^}]*grid-row:\s*1\s*\/\s*span 2/s);
+  assert.match(css, /\.project-card-image\s*\{[^}]*aspect-ratio:\s*1\s*\/\s*1/s);
+  assert.match(css, /\.project-image-grid \.lightbox-thumb\s*\{[^}]*aspect-ratio:\s*1\s*\/\s*1/s);
+  assert.match(css, /\.project-image-grid \.lightbox-thumb :where\(img, video\)\s*\{[^}]*height:\s*100%;[^}]*object-fit:\s*contain/s);
   assert.match(css, /\.project-owner-actions\s*\{[^}]*position:\s*static/s);
-  assert.ok(detailPage.indexOf("<ProjectOwnerActions") < detailPage.indexOf("project-summary-meta"));
+  assert.ok(detailPage.indexOf("project-summary-meta") < detailPage.indexOf("<ProjectOwnerActions"));
 });

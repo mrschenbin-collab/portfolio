@@ -95,8 +95,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .guest-inspiration { display: grid; grid-template-columns: 3fr 9fr; gap: clamp(2rem, 5vw, 6rem); padding-top: clamp(5rem, 8vw, 8rem); padding-bottom: clamp(6rem, 10vw, 10rem); }
 .guest-inspiration h2 { max-width: 13em; margin: .8rem 0 0; font-size: clamp(1.8rem, 3vw, 3.4rem); letter-spacing: 0; line-height: 1.25; }
 .inspiration-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--ink); border: 1px solid var(--ink); }
-.inspiration-grid figure { margin: 0; background: var(--paper); }
-.inspiration-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; filter: saturate(.82) contrast(1.03); }
+.inspiration-grid figure { margin: 0; overflow: hidden; background: var(--paper); }
+.inspiration-grid img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; filter: saturate(.9) contrast(1.02); }
 .inspiration-grid figcaption { display: flex; justify-content: space-between; gap: 1rem; padding: .9rem; font-size: .82rem; line-height: 1.5; }
 .inspiration-grid span { color: var(--muted); }
 
@@ -178,6 +178,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .discipline-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgba(243,240,233,.28); border: 1px solid rgba(243,240,233,.28); }
 .discipline-card { min-height: clamp(16rem, 26vw, 31rem); display: flex; flex-direction: column; justify-content: space-between; padding: clamp(1.2rem, 2.5vw, 2.5rem); }
 .discipline-card h3 { max-width: 6em; margin: 0; font-size: clamp(1.5rem, 3vw, 3.2rem); letter-spacing: 0; line-height: 1.18; }
+.discipline-image-card { display: block; aspect-ratio: 3 / 4; min-height: 0; overflow: hidden; background: var(--ink); }
+.discipline-image-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .manifesto {
   min-height: 100svh; display: grid; grid-template-columns: 2fr 7fr 3fr; align-content: center; gap: 1rem;

@@ -2,12 +2,21 @@ import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser } from "@/lib/auth";
 
 const inspirationImages = [
-  { src: "/inspiration-01.svg", title: "公共视觉灵感 01", meta: "图像构成" },
-  { src: "/inspiration-02.svg", title: "公共视觉灵感 02", meta: "版式参考" },
-  { src: "/inspiration-03.svg", title: "公共视觉灵感 03", meta: "色彩关系" },
-  { src: "/inspiration-04.svg", title: "公共视觉灵感 04", meta: "视觉节奏" },
-  { src: "/inspiration-05.svg", title: "公共视觉灵感 05", meta: "信息层级" },
-  { src: "/inspiration-06.svg", title: "公共视觉灵感 06", meta: "图形秩序" },
+  { src: "/public-inspiration-01.png", alt: "公共视觉灵感雕塑图" },
+  { src: "/public-inspiration-02.png", alt: "公共视觉灵感几何构成图" },
+  { src: "/public-inspiration-03.png", alt: "公共视觉灵感水彩人物图" },
+  { src: "/public-inspiration-04.png", alt: "公共视觉灵感未来场景图" },
+  { src: "/public-inspiration-05.png", alt: "公共视觉灵感拼贴人物图" },
+  { src: "/public-inspiration-06.png", alt: "公共视觉灵感花卉拼贴图" },
+];
+
+const disciplineImages = [
+  { src: "/discipline-visual-identity.png", alt: "视觉识别设计海报" },
+  { src: "/discipline-poster-design.png", alt: "海报设计海报" },
+  { src: "/discipline-brand-design.png", alt: "品牌设计海报" },
+  { src: "/discipline-editorial-design.png", alt: "编辑设计海报" },
+  { src: "/discipline-type-experiment.png", alt: "字体实验海报" },
+  { src: "/discipline-motion-visual.png", alt: "动态视觉海报" },
 ];
 
 export default async function Home() {
@@ -29,8 +38,7 @@ export default async function Home() {
           <div className="inspiration-grid">
             {inspirationImages.map((image) => (
               <figure key={image.src}>
-                <img src={image.src} alt={image.title} />
-                <figcaption><strong>{image.title}</strong><span>{image.meta}</span></figcaption>
+                <img src={image.src} alt={image.alt} />
               </figure>
             ))}
           </div>
@@ -67,9 +75,9 @@ export default async function Home() {
           <h2 id="language-title">图像、文字、秩序<br />共同完成一次表达。</h2>
         </header>
         <div className="discipline-grid">
-          {["视觉识别", "海报设计", "品牌设计", "编辑设计", "字体实验", "动态视觉"].map((item, index) => (
-            <article key={item} className={`discipline-card tone-${["red", "ink", "blue", "green", "yellow", "mono"][index]}`} data-image-reveal>
-              <span className="serif">0{index + 1}</span><h3>{item}</h3>
+          {disciplineImages.map((image) => (
+            <article key={image.src} className="discipline-image-card" data-image-reveal>
+              <img src={image.src} alt={image.alt} />
             </article>
           ))}
         </div>

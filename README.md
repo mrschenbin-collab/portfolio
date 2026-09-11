@@ -39,12 +39,11 @@ SUPABASE_URL=https://你的项目.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxx
 SUPABASE_STORAGE_BUCKET=portfolio-media
 
-TENCENTCLOUD_SECRET_ID=腾讯云 CAM 专用身份 SecretId
-TENCENTCLOUD_SECRET_KEY=腾讯云 CAM 专用身份 SecretKey
-TENCENT_SES_REGION=SES 地域
-TENCENT_SES_FROM_EMAIL=已审核发信地址
+TENCENT_SECRET_ID=腾讯云 CAM 专用身份 SecretId
+TENCENT_SECRET_KEY=腾讯云 CAM 专用身份 SecretKey
+TENCENT_SES_REGION=ap-hongkong
+TENCENT_SES_FROM_EMAIL=no-reply@mail.cblworks.site
 TENCENT_SES_TEMPLATE_ID=已审核验证码模板 ID
-TENCENT_SES_REPLY_TO=可选
 
 REGISTRATION_CODE=可选；邮箱白名单之外的第二层邀请校验
 ```

@@ -18,6 +18,22 @@ function clean(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function tencentSecretId(): string {
+  return clean(process.env.TENCENT_SECRET_ID, 300);
+}
+
+function tencentSecretKey(): string {
+  return clean(process.env.TENCENT_SECRET_KEY, 300);
+}
+
+function sesRegion(): string {
+  return clean(process.env.TENCENT_SES_REGION, 60) || "ap-hongkong";
+}
+
+function sesFromEmail(): string {
+  return clean(process.env.TENCENT_SES_FROM_EMAIL, 300) || "no-reply@mail.cblworks.site";
+}
+
 function templateId(): number {
   const id = Number(clean(process.env.TENCENT_SES_TEMPLATE_ID, 40));
   return Number.isInteger(id) && id > 0 ? id : 0;
@@ -25,10 +41,10 @@ function templateId(): number {
 
 export function isMailConfigured(): boolean {
   return Boolean(
-    clean(process.env.TENCENTCLOUD_SECRET_ID, 300)
-    && clean(process.env.TENCENTCLOUD_SECRET_KEY, 300)
-    && clean(process.env.TENCENT_SES_REGION, 60)
-    && clean(process.env.TENCENT_SES_FROM_EMAIL, 300)
+    tencentSecretId()
+    && tencentSecretKey()
+    && sesRegion()
+    && sesFromEmail()
     && templateId(),
   );
 }
@@ -51,10 +67,10 @@ export async function sendVerificationEmail(
   const title = `视觉档案${label}验证码`;
   const client = new ses.v20201002.Client({
     credential: {
-      secretId: clean(process.env.TENCENTCLOUD_SECRET_ID, 300),
-      secretKey: clean(process.env.TENCENTCLOUD_SECRET_KEY, 300),
+      secretId: tencentSecretId(),
+      secretKey: tencentSecretKey(),
     },
-    region: clean(process.env.TENCENT_SES_REGION, 60),
+    region: sesRegion(),
     profile: {
       signMethod: "TC3-HMAC-SHA256",
       httpProfile: {
@@ -66,9 +82,10 @@ export async function sendVerificationEmail(
   });
 
   try {
+    const fromEmail = sesFromEmail();
     await client.SendEmail({
-      FromEmailAddress: clean(process.env.TENCENT_SES_FROM_EMAIL, 300),
-      ReplyToAddresses: clean(process.env.TENCENT_SES_REPLY_TO, 300) || clean(process.env.TENCENT_SES_FROM_EMAIL, 300),
+      FromEmailAddress: fromEmail,
+      ReplyToAddresses: fromEmail,
       Destination: [to],
       Subject: title,
       Template: {

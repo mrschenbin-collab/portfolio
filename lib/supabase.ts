@@ -6,7 +6,41 @@
  * the app's existing email/password + signed HttpOnly session flow.
  */
 
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
 const jsonHeaders = { "content-type": "application/json" };
+
+type QueryParams = URLSearchParams | Record<string, string>;
+type SupabaseErrorLike = {
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null;
+};
+type SupabaseResult<T> = {
+  data: T | null;
+  error: SupabaseErrorLike | null;
+  status?: number;
+};
+type MutationRows = Record<string, unknown> | Record<string, unknown>[];
+type QueryBuilder = {
+  eq(column: string, value: string): QueryBuilder;
+  neq(column: string, value: string): QueryBuilder;
+  gt(column: string, value: string): QueryBuilder;
+  gte(column: string, value: string): QueryBuilder;
+  lt(column: string, value: string): QueryBuilder;
+  lte(column: string, value: string): QueryBuilder;
+  is(column: string, value: null | boolean): QueryBuilder;
+  order(column: string, options?: { ascending?: boolean }): QueryBuilder;
+  limit(count: number): QueryBuilder;
+  then<TResult1 = SupabaseResult<unknown[]>, TResult2 = never>(
+    onfulfilled?: ((value: SupabaseResult<unknown[]>) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2>;
+};
+
+let cachedClient: SupabaseClient | null = null;
+let cachedClientConfig = "";
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -16,8 +50,7 @@ function requireEnv(name: string): string {
 
 function config() {
   const url = requireEnv("SUPABASE_URL").replace(/\/+$/, "");
-  const key = (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  if (!key) throw new Error("Missing required SUPABASE_SECRET_KEY.");
+  const key = requireEnv("SUPABASE_SECRET_KEY");
   const bucket = (process.env.SUPABASE_STORAGE_BUCKET || "portfolio-media").trim();
   return { url, key, bucket };
 }
@@ -26,10 +59,30 @@ function adminHeaders(extra?: HeadersInit): Headers {
   const { key } = config();
   const headers = new Headers(extra);
   headers.set("apikey", key);
-  // New sb_secret_* keys are API keys, not JWTs, and must not be sent as
-  // Authorization: Bearer. Keep Bearer only for the legacy service_role JWT.
-  if (!key.startsWith("sb_secret_")) headers.set("authorization", `Bearer ${key}`);
   return headers;
+}
+
+function supabaseServerClient(): SupabaseClient {
+  const { url, key } = config();
+  const cacheKey = `${url}\n${key}`;
+  if (cachedClient && cachedClientConfig === cacheKey) return cachedClient;
+
+  cachedClient = createClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+    global: {
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.delete("authorization");
+        return fetch(input, { ...init, headers });
+      },
+    },
+  });
+  cachedClientConfig = cacheKey;
+  return cachedClient;
 }
 
 async function parseJsonResponse<T>(response: Response, label: string): Promise<T> {
@@ -48,40 +101,76 @@ async function parseJsonResponse<T>(response: Response, label: string): Promise<
   return JSON.parse(text) as T;
 }
 
-function restUrl(table: string, params?: URLSearchParams | Record<string, string>): string {
-  const { url } = config();
-  const target = new URL(`${url}/rest/v1/${encodeURIComponent(table)}`);
+function paramsEntries(params?: QueryParams): [string, string][] {
   if (params instanceof URLSearchParams) {
-    for (const [key, value] of params) target.searchParams.append(key, value);
-  } else if (params) {
-    for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
+    return [...params.entries()];
   }
-  return target.toString();
+  return params ? Object.entries(params) : [];
 }
 
-export async function dbSelect<T>(
-  table: string,
-  params: URLSearchParams | Record<string, string> = { select: "*" },
-): Promise<T[]> {
-  const response = await fetch(restUrl(table, params), {
-    headers: adminHeaders({ accept: "application/json" }),
-    cache: "no-store",
-  });
-  return parseJsonResponse<T[]>(response, `Supabase select ${table}`);
+function applyQueryParams(builder: QueryBuilder, params?: QueryParams): QueryBuilder {
+  let query = builder;
+  for (const [key, value] of paramsEntries(params)) {
+    if (key === "select") continue;
+    if (key === "limit") {
+      const count = Number(value);
+      if (Number.isInteger(count) && count >= 0) query = query.limit(count);
+      continue;
+    }
+    if (key === "order") {
+      for (const item of value.split(",").map((part) => part.trim()).filter(Boolean)) {
+        const [column, direction] = item.split(".");
+        if (column) query = query.order(column, { ascending: direction !== "desc" });
+      }
+      continue;
+    }
+
+    const separator = value.indexOf(".");
+    const operator = separator === -1 ? "eq" : value.slice(0, separator);
+    const operand = separator === -1 ? value : value.slice(separator + 1);
+    if (operator === "eq") query = query.eq(key, operand);
+    else if (operator === "neq") query = query.neq(key, operand);
+    else if (operator === "gt") query = query.gt(key, operand);
+    else if (operator === "gte") query = query.gte(key, operand);
+    else if (operator === "lt") query = query.lt(key, operand);
+    else if (operator === "lte") query = query.lte(key, operand);
+    else if (operator === "is") {
+      const value = operand === "null" ? null : operand === "true";
+      query = query.is(key, value);
+    } else {
+      throw new Error(`Unsupported Supabase filter operator: ${operator}`);
+    }
+  }
+  return query;
+}
+
+function selectColumns(params?: QueryParams): string {
+  return paramsEntries(params).find(([key]) => key === "select")?.[1] || "*";
+}
+
+function dataOrThrow<T>(result: SupabaseResult<T[]>, label: string): T[] {
+  if (result.error) {
+    const message = result.error.message || result.error.details || result.error.hint || result.error.code || "unknown error";
+    throw new Error(`${label} failed (${result.status ?? "unknown"}): ${message.slice(0, 500)}`);
+  }
+  return result.data ?? [];
+}
+
+export async function dbSelect<T>(table: string, params: QueryParams = { select: "*" }): Promise<T[]> {
+  const query = applyQueryParams(
+    supabaseServerClient().from(table).select(selectColumns(params)) as unknown as QueryBuilder,
+    params,
+  );
+  const result = await query as SupabaseResult<T[]>;
+  return dataOrThrow<T>(result, `Supabase select ${table}`);
 }
 
 export async function dbInsert<T>(table: string, rows: unknown): Promise<T[]> {
-  const response = await fetch(restUrl(table), {
-    method: "POST",
-    headers: adminHeaders({
-      ...jsonHeaders,
-      accept: "application/json",
-      prefer: "return=representation",
-    }),
-    body: JSON.stringify(rows),
-    cache: "no-store",
-  });
-  return parseJsonResponse<T[]>(response, `Supabase insert ${table}`);
+  const result = await supabaseServerClient()
+    .from(table)
+    .insert(rows as MutationRows)
+    .select() as SupabaseResult<T[]>;
+  return dataOrThrow<T>(result, `Supabase insert ${table}`);
 }
 
 export async function dbUpsert<T>(
@@ -89,51 +178,36 @@ export async function dbUpsert<T>(
   rows: unknown,
   onConflict: string,
 ): Promise<T[]> {
-  const params = new URLSearchParams({ on_conflict: onConflict });
-  const response = await fetch(restUrl(table, params), {
-    method: "POST",
-    headers: adminHeaders({
-      ...jsonHeaders,
-      accept: "application/json",
-      prefer: "resolution=merge-duplicates,return=representation",
-    }),
-    body: JSON.stringify(rows),
-    cache: "no-store",
-  });
-  return parseJsonResponse<T[]>(response, `Supabase upsert ${table}`);
+  const result = await supabaseServerClient()
+    .from(table)
+    .upsert(rows as MutationRows, { onConflict })
+    .select() as SupabaseResult<T[]>;
+  return dataOrThrow<T>(result, `Supabase upsert ${table}`);
 }
 
 export async function dbUpdate<T>(
   table: string,
   values: unknown,
-  params: URLSearchParams | Record<string, string>,
+  params: QueryParams,
 ): Promise<T[]> {
-  const response = await fetch(restUrl(table, params), {
-    method: "PATCH",
-    headers: adminHeaders({
-      ...jsonHeaders,
-      accept: "application/json",
-      prefer: "return=representation",
-    }),
-    body: JSON.stringify(values),
-    cache: "no-store",
-  });
-  return parseJsonResponse<T[]>(response, `Supabase update ${table}`);
+  const query = applyQueryParams(
+    supabaseServerClient().from(table).update(values as Record<string, unknown>).select() as unknown as QueryBuilder,
+    params,
+  );
+  const result = await query as SupabaseResult<T[]>;
+  return dataOrThrow<T>(result, `Supabase update ${table}`);
 }
 
 export async function dbDelete<T>(
   table: string,
-  params: URLSearchParams | Record<string, string>,
+  params: QueryParams,
 ): Promise<T[]> {
-  const response = await fetch(restUrl(table, params), {
-    method: "DELETE",
-    headers: adminHeaders({
-      accept: "application/json",
-      prefer: "return=representation",
-    }),
-    cache: "no-store",
-  });
-  return parseJsonResponse<T[]>(response, `Supabase delete ${table}`);
+  const query = applyQueryParams(
+    supabaseServerClient().from(table).delete().select() as unknown as QueryBuilder,
+    params,
+  );
+  const result = await query as SupabaseResult<T[]>;
+  return dataOrThrow<T>(result, `Supabase delete ${table}`);
 }
 
 function storageBase(): string {

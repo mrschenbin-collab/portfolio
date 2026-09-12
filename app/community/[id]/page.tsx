@@ -3,13 +3,34 @@ import { notFound } from "next/navigation";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser, requireAppUser } from "@/lib/auth";
+import { getContactLinks, type ContactKind, type ContactLink } from "@/lib/contact-links";
 import { getCommunityProject, getCommunityProjects } from "@/lib/portfolio";
+import { getProfile } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
 function parseId(value: string): number | null {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+const contactKindLabels: Record<ContactKind, string> = {
+  email: "邮箱",
+  social: "社交平台",
+  portfolio: "作品平台",
+  other: "其他",
+};
+
+function CommunityContactItem({ link }: { link: ContactLink }) {
+  const content = <>
+    <span>{contactKindLabels[link.kind]}</span>
+    <strong>{link.label}</strong>
+    <small>{link.value}</small>
+  </>;
+
+  return link.href
+    ? <a href={link.href} target="_blank" rel="noreferrer">{content}</a>
+    : <span>{content}</span>;
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -26,9 +47,18 @@ export default async function CommunityProjectPage({ params }: { params: Promise
   const user = await requireAppUser(`/community/${id}`);
   const project = await getCommunityProject(user.id, id);
   if (!project) notFound();
-  const all = await getCommunityProjects(user.id);
+  const [all, authorProfile, authorContactLinks] = await Promise.all([
+    getCommunityProjects(user.id),
+    getProfile(project.authorId),
+    project.authorId === user.id ? Promise.resolve([]) : getContactLinks(project.authorId),
+  ]);
   const currentIndex = all.findIndex((item) => item.id === project.id);
   const next = all.length > 1 ? all[(currentIndex + 1) % all.length] : null;
+  const profileImages = authorProfile.imageUrls.map((url, index) => ({
+    id: authorProfile.imageKeys[index] ?? `author-profile-${index}`,
+    url,
+    altText: `${project.authorName}本人介绍图片 ${index + 1}`,
+  }));
   const galleryItems = [
     ...project.images.map((image, index) => ({
       id: `image-${image.id}`,
@@ -47,6 +77,29 @@ export default async function CommunityProjectPage({ params }: { params: Promise
   return <main className="project-page">
     <section className="project-detail section-pad">
       <aside className="project-detail-meta" data-reveal>
+        <section className="community-author-card" aria-label="作者资料">
+          <p className="eyebrow">作者资料</p>
+          <ImageLightbox
+            images={profileImages}
+            className={`community-author-photos image-count-${profileImages.length}`}
+            empty={<figure className="community-author-empty"><span>作者头像</span><small>暂未上传</small></figure>}
+          />
+          <div className="community-author-heading">
+            <h2>{project.authorName}</h2>
+            <p>{authorProfile.roleZh}</p>
+          </div>
+          <p className="community-author-intro">{authorProfile.intro}</p>
+          <dl className="community-author-info">
+            <div><dt>研究方向</dt><dd>{authorProfile.focus.join(" · ") || "待补充"}</dd></div>
+            {authorProfile.education ? <div><dt>教育经历</dt><dd>{authorProfile.education}</dd></div> : null}
+            {authorProfile.experience ? <div><dt>实践经历</dt><dd>{authorProfile.experience}</dd></div> : null}
+            {authorProfile.awards ? <div><dt>奖项与展览</dt><dd>{authorProfile.awards}</dd></div> : null}
+          </dl>
+          {authorContactLinks.length ? <div className="community-contact-panel" aria-label="联系展示区">
+            <p>联系展示区</p>
+            <div>{authorContactLinks.map((link) => <CommunityContactItem link={link} key={link.id} />)}</div>
+          </div> : null}
+        </section>
         <p className="eyebrow">社区作品</p>
         <h1><span className="mask-line"><span data-reveal-line>{project.title}</span></span></h1>
         <dl>

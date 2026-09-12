@@ -520,11 +520,20 @@ export async function canReadMediaKey(viewerId: string, key: string): Promise<bo
   }
 
   const profiles = await dbSelect<StoredProfile>("profiles", new URLSearchParams({
-    select: "imageKey,imageKeys",
-    authorId: `eq.${viewerId}`,
+    select: "authorId,imageKey,imageKeys",
+  }));
+  const profile = profiles.find((row) => (
+    new Set([row.imageKey, ...(row.imageKeys ?? [])].filter(Boolean)).has(safeKey)
+  ));
+  if (!profile) return false;
+  if (profile.authorId === viewerId) return true;
+  if (!profile.authorId) return false;
+
+  const projects = await dbSelect<StoredProject>("projects", new URLSearchParams({
+    select: "id",
+    authorId: `eq.${profile.authorId}`,
+    status: "eq.published",
     limit: "1",
   }));
-  const profile = profiles[0];
-  if (!profile) return false;
-  return new Set([profile.imageKey, ...(profile.imageKeys ?? [])].filter(Boolean)).has(safeKey);
+  return projects.length > 0;
 }

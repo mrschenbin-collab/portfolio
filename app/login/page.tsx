@@ -12,7 +12,7 @@ function safeNext(value: string | undefined): string {
   }
   try {
     const parsed = new URL(value, "https://portfolio.local");
-    const exactPaths = new Set(["/", "/admin", "/work", "/community", "/archive", "/about", "/contact"]);
+    const exactPaths = new Set(["/", "/admin", "/work", "/community", "/archive", "/about"]);
     const allowed = parsed.origin === "https://portfolio.local"
       && (
         exactPaths.has(parsed.pathname)

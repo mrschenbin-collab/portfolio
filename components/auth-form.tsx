@@ -100,7 +100,7 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
   }
 
   return <section className="login-card">
-    <p className="eyebrow">作品集后台</p>
+    <p className="eyebrow">作品后台</p>
     <h1>{title()}</h1>
     <p>登录后可以提交作品、上传图片、修改本人介绍与联系信息。每个账号只管理自己的内容。</p>
     <div className="auth-switch" role="tablist" aria-label="选择登录或注册">

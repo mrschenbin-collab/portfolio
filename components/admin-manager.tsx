@@ -579,11 +579,11 @@ export function AdminManager({
     <details className="admin-panel">
       <summary><span>联系信息</span><small>增加、修改、删除邮箱、社交平台和作品平台</small></summary>
       <section className="admin-contact-panel" aria-labelledby="contact-list-title">
-        <div className="admin-section-head"><div><p className="eyebrow">联系页面</p><h2 id="contact-list-title">联系信息</h2></div><button type="button" className="quiet" onClick={startNewContact}>新增入口</button></div>
+        <div className="admin-section-head"><div><p className="eyebrow">社区展示</p><h2 id="contact-list-title">联系信息</h2></div><button type="button" className="quiet" onClick={startNewContact}>新增入口</button></div>
         {contactLinks.length ? <div className="admin-contact-list">{contactLinks.map((link) => <article key={link.id} className="admin-contact-row">
           <div><strong>{link.label}</strong><p>{link.value}</p><small>{contactKindOptions.find((option) => option.value === link.kind)?.label ?? "其他"}{link.href ? ` · ${link.href}` : ""}</small></div>
           <div className="admin-row-actions"><button type="button" onClick={() => startEditContact(link)}>修改</button><button type="button" className="danger" onClick={() => removeContact(link)} disabled={contactBusy}>删除</button></div>
-        </article>)}</div> : <div className="empty-state compact"><span>暂无联系入口</span><p>新增后会显示在联系页面。</p></div>}
+        </article>)}</div> : <div className="empty-state compact"><span>暂无联系入口</span><p>新增后会显示在社区作品的作者资料里。</p></div>}
         <form className="contact-admin-form" onSubmit={submitContact}>
           <div className="form-grid">
             <label><span>类型</span><select value={contactForm.kind} onChange={(event) => setContactForm({ ...contactForm, kind: event.target.value as ContactKind })}>{contactKindOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>

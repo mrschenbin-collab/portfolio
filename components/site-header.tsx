@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { TransitionLink } from "./transition-link";
 
-const links = [["/about", "本人介绍"], ["/work", "作品"], ["/community", "社区"], ["/archive", "档案"], ["/contact", "联系"]];
+const links = [["/about", "本人介绍"], ["/work", "作品"], ["/community", "社区"], ["/archive", "档案"]];
 
 export function SiteHeader({ isAuthenticated }: { isAuthenticated: boolean }) {
   const pathname = usePathname();
@@ -14,7 +14,7 @@ export function SiteHeader({ isAuthenticated }: { isAuthenticated: boolean }) {
         {links.map(([href, label]) => <TransitionLink key={href} href={href} className={pathname.startsWith(href) ? "active" : ""} data-cursor="打开">{label}</TransitionLink>)}
       </nav> : <span className="guest-header-note">视觉传达设计作品集展示网站</span>}
       <TransitionLink href={isAuthenticated ? "/admin" : "/login"} className="lab-link" data-cursor="打开">
-        {isAuthenticated ? "后台" : "登录 / 注册"} ↗
+        {isAuthenticated ? "作品后台" : "登录 / 注册"} ↗
       </TransitionLink>
     </header>
   );

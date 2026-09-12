@@ -73,6 +73,21 @@ test("video uploads stay private and server validated", async () => {
   assert.match(migration, /209715200/);
 });
 
+test("image uploads tolerate mobile JPG MIME aliases while still validating bytes", async () => {
+  const [media, manager] = await Promise.all([
+    read("lib/file-media.ts"),
+    read("components/admin-manager.tsx"),
+  ]);
+
+  assert.match(media, /image\/jpg/);
+  assert.match(media, /image\/pjpeg/);
+  assert.match(media, /imageExtensionFromName/);
+  assert.match(media, /detectImage\(original\)/);
+  assert.doesNotMatch(media, /图片实际格式与文件类型不一致/);
+  assert.match(manager, /imageNamePattern/);
+  assert.match(manager, /normalizedFileType/);
+});
+
 test("registration uses open email signups with a race-safe 20-user cap", async () => {
   const [auth, migration, envExample] = await Promise.all([
     read("lib/auth.ts"),

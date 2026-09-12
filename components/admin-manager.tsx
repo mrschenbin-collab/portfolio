@@ -13,9 +13,11 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const MAX_PROJECT_VIDEOS = 4;
 const MAX_PROFILE_IMAGES = 3;
 const MAX_AWARD_IMAGES = 8;
-const imageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const imageMimeTypes = new Set(["image/jpeg", "image/jpg", "image/pjpeg", "image/png", "image/x-png", "image/webp", "image/gif"]);
 const videoMimeTypes = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"]);
-const mediaAccept = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,video/x-m4v";
+const mediaAccept = "image/jpeg,image/jpg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif,video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v";
+const imageNamePattern = /\.(jpe?g|png|webp|gif)$/i;
+const videoNamePattern = /\.(mp4|webm|mov|m4v)$/i;
 
 type FormState = {
   slug: string;
@@ -70,6 +72,20 @@ const emptyContactForm = (): ContactFormState => ({
   value: "",
   href: "",
 });
+
+function normalizedFileType(file: File): string {
+  return file.type.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function isImageFile(file: File): boolean {
+  const type = normalizedFileType(file);
+  return imageMimeTypes.has(type) || (!type && imageNamePattern.test(file.name));
+}
+
+function isVideoFile(file: File): boolean {
+  const type = normalizedFileType(file);
+  return videoMimeTypes.has(type) || (!type && videoNamePattern.test(file.name));
+}
 
 function toForm(project: PortfolioProject): FormState {
   return {
@@ -176,7 +192,7 @@ export function AdminManager({
   }
 
   function handleProjectMediaSelection(selected: File[]) {
-    const invalid = selected.find((file) => !imageMimeTypes.has(file.type) && !videoMimeTypes.has(file.type));
+    const invalid = selected.find((file) => !isImageFile(file) && !isVideoFile(file));
     if (invalid) {
       setFiles([]);
       setVideoFiles([]);
@@ -185,8 +201,8 @@ export function AdminManager({
       return;
     }
     setError("");
-    setFiles(selected.filter((file) => imageMimeTypes.has(file.type)));
-    setVideoFiles(selected.filter((file) => videoMimeTypes.has(file.type)));
+    setFiles(selected.filter(isImageFile));
+    setVideoFiles(selected.filter(isVideoFile));
   }
 
   async function stageImageUpload(file: File): Promise<string> {
@@ -321,7 +337,7 @@ export function AdminManager({
       if (createdProjectId) {
         await refresh().catch(() => undefined);
         setEditingId(createdProjectId);
-        setError(`作品资料已保存，但媒体上传失败：${detail} 请直接重试，无需重新创建。`);
+        setError(`作品资料已保存，但媒体上传失败：${detail.replace(/[。！？.!?]$/, "")}。请直接重试，无需重新创建。`);
       } else {
         setError(detail);
       }

@@ -12,7 +12,10 @@ import {
 
 export const allowedImageTypes = new Map([
   ["image/jpeg", "jpg"],
+  ["image/jpg", "jpg"],
+  ["image/pjpeg", "jpg"],
   ["image/png", "png"],
+  ["image/x-png", "png"],
   ["image/webp", "webp"],
   ["image/gif", "gif"],
 ]);
@@ -56,6 +59,18 @@ export function mediaUrl(key: string): string {
 
 function safeSegment(value: string, fallback: string): string {
   return value.replace(/[^\w-]/g, "").slice(0, 48) || fallback;
+}
+
+function normalizeContentType(value: unknown): string {
+  return typeof value === "string" ? value.split(";")[0]?.trim().toLowerCase() ?? "" : "";
+}
+
+function imageExtensionFromName(value: unknown): DetectedImage["extension"] | null {
+  if (typeof value !== "string") return null;
+  const extension = path.extname(value).toLowerCase().replace(".", "");
+  if (extension === "jpg" || extension === "jpeg") return "jpg";
+  if (extension === "png" || extension === "webp" || extension === "gif") return extension;
+  return null;
 }
 
 function detectImage(buffer: Buffer): DetectedImage | null {
@@ -110,7 +125,6 @@ async function prepareImageBuffer(original: Buffer, declaredType = ""): Promise<
 
   const detected = detectImage(original);
   if (!detected) throw new Error("图片格式无效，请上传真实的 JPG、PNG、WEBP 或 GIF 文件");
-  if (declaredType && declaredType !== detected.contentType) throw new Error("图片实际格式与文件类型不一致，请重新导出后上传");
 
   let metadata: Metadata;
   try {
@@ -175,11 +189,11 @@ export async function createImageUploadTicket(
   input: { name?: unknown; type?: unknown; size?: unknown },
 ): Promise<ImageUploadTicket> {
   const size = Number(input.size);
-  const declaredType = typeof input.type === "string" ? input.type : "";
+  const declaredType = normalizeContentType(input.type);
   if (!Number.isFinite(size) || size <= 0 || size > maxImageBytes) throw new Error("单张图片不能超过十五兆");
-  if (!allowedImageTypes.has(declaredType)) throw new Error("仅支持 JPG、PNG、WEBP 或 GIF 图片");
+  const extension = allowedImageTypes.get(declaredType) ?? imageExtensionFromName(input.name);
+  if (!extension) throw new Error("仅支持 JPG、PNG、WEBP 或 GIF 图片");
 
-  const extension = allowedImageTypes.get(declaredType) ?? "bin";
   const userSegment = safeSegment(userId, "user");
   const tempKey = `${tempPrefix}/${userSegment}/${Date.now()}-${randomUUID()}.${extension}`;
   const { signedUrl } = await createSignedStorageUpload(tempKey);
@@ -191,7 +205,7 @@ export async function createVideoUploadTicket(
   input: { name?: unknown; type?: unknown; size?: unknown },
 ): Promise<ImageUploadTicket> {
   const size = Number(input.size);
-  const declaredType = typeof input.type === "string" ? input.type : "";
+  const declaredType = normalizeContentType(input.type);
   if (!Number.isFinite(size) || size <= 0 || size > maxVideoBytes) throw new Error("单个视频不能超过 200MB");
   if (!allowedVideoTypes.has(declaredType)) throw new Error("仅支持 MP4、WEBM、MOV 或 M4V 视频");
 
@@ -212,7 +226,7 @@ export async function finalizeImageUpload(userId: string, tempKey: string, prefi
   try {
     const temporary = await downloadStorageObject(normalizedTempKey);
     if (temporary.body.length > maxImageBytes) throw new Error("单张图片不能超过十五兆");
-    const storedType = temporary.contentType.split(";")[0]?.trim() ?? "";
+    const storedType = normalizeContentType(temporary.contentType);
     const declaredType = allowedImageTypes.has(storedType) ? storedType : "";
     const prepared = await prepareImageBuffer(temporary.body, declaredType);
     if (prepared.body.length > maxImageBytes) throw new Error("处理后的图片超过十五兆，请压缩后重试");

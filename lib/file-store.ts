@@ -65,6 +65,7 @@ export type StoredProfile = {
   awards: string;
   imageKey: string;
   imageKeys: string[];
+  awardImageKeys?: string[];
 };
 
 export type StoredContactKind = "email" | "social" | "portfolio" | "other";

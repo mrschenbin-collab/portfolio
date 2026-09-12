@@ -4,6 +4,7 @@ import type { StoredProfile } from "@/lib/file-store";
 import { dbSelect, dbUpsert } from "@/lib/supabase";
 
 const maxProfileImages = 3;
+const maxAwardImages = 8;
 
 export type ProfileContent = {
   roleZh: string;
@@ -16,9 +17,11 @@ export type ProfileContent = {
   imageKeys: string[];
   imageUrl: string;
   imageUrls: string[];
+  awardImageKeys: string[];
+  awardImageUrls: string[];
 };
 
-export type ProfileInput = Omit<ProfileContent, "imageUrl" | "imageUrls">;
+export type ProfileInput = Omit<ProfileContent, "imageUrl" | "imageUrls" | "awardImageUrls">;
 
 function clean(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -28,13 +31,13 @@ function cleanImageKey(value: unknown): string {
   return clean(value, 160).replace(/[^\w.-]/g, "");
 }
 
-function parseImageKeys(payload: Record<string, unknown>): string[] {
-  const values = Array.isArray(payload.imageKeys)
-    ? payload.imageKeys
-    : payload.imageKey
-      ? [payload.imageKey]
+function parseImageKeys(payload: Record<string, unknown>, field = "imageKeys", singleField = "imageKey", max = maxProfileImages): string[] {
+  const values = Array.isArray(payload[field])
+    ? payload[field]
+    : payload[singleField]
+      ? [payload[singleField]]
       : [];
-  return [...new Set(values.map(cleanImageKey).filter(Boolean))].slice(0, maxProfileImages);
+  return [...new Set(values.map(cleanImageKey).filter(Boolean))].slice(0, max);
 }
 
 function parseFocus(value: unknown): string[] {
@@ -51,12 +54,16 @@ function withImageUrl(profile: ProfileInput): ProfileContent {
       ? [profile.imageKey]
       : [];
   const limitedImageKeys = imageKeys.slice(0, maxProfileImages);
+  const awardImageKeys = Array.isArray(profile.awardImageKeys) ? profile.awardImageKeys : [];
+  const limitedAwardImageKeys = awardImageKeys.map(cleanImageKey).filter(Boolean).slice(0, maxAwardImages);
   return {
     ...profile,
     imageKey: limitedImageKeys[0] ?? "",
     imageKeys: limitedImageKeys,
     imageUrl: limitedImageKeys[0] ? mediaUrl(limitedImageKeys[0]) : "",
     imageUrls: limitedImageKeys.map((key) => mediaUrl(key)),
+    awardImageKeys: limitedAwardImageKeys,
+    awardImageUrls: limitedAwardImageKeys.map((key) => mediaUrl(key)),
   };
 }
 
@@ -70,6 +77,7 @@ function fromStored(row: StoredProfile): ProfileContent {
     awards: row.awards,
     imageKey: row.imageKey || "",
     imageKeys: Array.isArray(row.imageKeys) ? row.imageKeys : row.imageKey ? [row.imageKey] : [],
+    awardImageKeys: Array.isArray(row.awardImageKeys) ? row.awardImageKeys : [],
   });
 }
 
@@ -83,6 +91,7 @@ export function defaultProfileContent(): ProfileContent {
     awards: defaultProfile.awards,
     imageKey: "",
     imageKeys: [],
+    awardImageKeys: [],
   });
 }
 
@@ -90,6 +99,7 @@ export function parseProfileInput(payload: Record<string, unknown>): ProfileInpu
   const roleZh = clean(payload.roleZh, 120);
   const intro = clean(payload.intro, 2000);
   const imageKeys = parseImageKeys(payload);
+  const awardImageKeys = parseImageKeys(payload, "awardImageKeys", "awardImageKey", maxAwardImages);
   if (!roleZh) return { error: "请填写身份介绍" };
   if (!intro) return { error: "请填写自我介绍" };
 
@@ -102,6 +112,7 @@ export function parseProfileInput(payload: Record<string, unknown>): ProfileInpu
     awards: clean(payload.awards, 1600),
     imageKey: imageKeys[0] ?? "",
     imageKeys,
+    awardImageKeys,
   };
 }
 
@@ -126,6 +137,7 @@ export async function saveProfile(authorId: string, profile: ProfileInput): Prom
     awards: normalized.awards,
     imageKey: normalized.imageKey,
     imageKeys: normalized.imageKeys,
+    awardImageKeys: normalized.awardImageKeys,
   };
   const rows = await dbUpsert<StoredProfile>("profiles", stored, "authorId");
   return rows[0] ? fromStored(rows[0]) : normalized;
@@ -141,5 +153,6 @@ export function toStoredProfile(profile: ProfileContent): ProfileInput {
     awards: profile.awards,
     imageKey: profile.imageKeys[0] ?? "",
     imageKeys: profile.imageKeys,
+    awardImageKeys: profile.awardImageKeys,
   };
 }

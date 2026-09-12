@@ -12,6 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const project = await getProjectById(user.id, id);
     if (!project) return Response.json({ error: "作品不存在" }, { status: 404 });
+    if (project.images.length + project.videos.length >= 12) return Response.json({ error: "每个作品最多上传十二个媒体文件" }, { status: 400 });
     if (project.videos.length >= 4) return Response.json({ error: "每个作品最多上传四个视频" }, { status: 400 });
 
     const payload = await request.json() as Record<string, unknown>;
@@ -23,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!videos) {
       await deleteVideoFile(storedKey).catch(() => undefined);
       storedKey = "";
-      return Response.json({ error: "作品不存在或视频数量超出限制" }, { status: 400 });
+      return Response.json({ error: "作品不存在或媒体数量超出限制" }, { status: 400 });
     }
     return Response.json({ videos }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch (error) {

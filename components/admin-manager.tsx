@@ -8,9 +8,14 @@ import { readApiResponse } from "@/lib/api-response";
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_PROJECT_IMAGES = 12;
+const MAX_PROJECT_MEDIA = 12;
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const MAX_PROJECT_VIDEOS = 4;
 const MAX_PROFILE_IMAGES = 3;
+const MAX_AWARD_IMAGES = 8;
+const imageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const videoMimeTypes = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"]);
+const mediaAccept = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,video/x-m4v";
 
 type FormState = {
   slug: string;
@@ -120,9 +125,10 @@ export function AdminManager({
   const [files, setFiles] = useState<File[]>([]);
   const [videoFiles, setVideoFiles] = useState<File[]>([]);
   const [profileFiles, setProfileFiles] = useState<File[]>([]);
+  const [awardFiles, setAwardFiles] = useState<File[]>([]);
   const [fileKey, setFileKey] = useState(0);
-  const [videoFileKey, setVideoFileKey] = useState(0);
   const [profileFileKey, setProfileFileKey] = useState(0);
+  const [awardFileKey, setAwardFileKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [contactBusy, setContactBusy] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -146,7 +152,6 @@ export function AdminManager({
     setFiles([]);
     setVideoFiles([]);
     setFileKey((value) => value + 1);
-    setVideoFileKey((value) => value + 1);
     setMessage("");
     setError("");
     document.getElementById("project-form")?.scrollIntoView({ behavior: "smooth" });
@@ -158,7 +163,6 @@ export function AdminManager({
     setFiles([]);
     setVideoFiles([]);
     setFileKey((value) => value + 1);
-    setVideoFileKey((value) => value + 1);
     setMessage("");
     setError("");
     document.getElementById("project-form")?.scrollIntoView({ behavior: "smooth" });
@@ -169,6 +173,20 @@ export function AdminManager({
     const result = await readApiResponse<T>(response);
     if (!response.ok) throw new Error(result.error ?? "操作失败");
     return result;
+  }
+
+  function handleProjectMediaSelection(selected: File[]) {
+    const invalid = selected.find((file) => !imageMimeTypes.has(file.type) && !videoMimeTypes.has(file.type));
+    if (invalid) {
+      setFiles([]);
+      setVideoFiles([]);
+      setError(`“${invalid.name}”格式不支持，请上传 JPG、PNG、WEBP、GIF 图片或 MP4、WEBM、MOV、M4V 视频。`);
+      setFileKey((value) => value + 1);
+      return;
+    }
+    setError("");
+    setFiles(selected.filter((file) => imageMimeTypes.has(file.type)));
+    setVideoFiles(selected.filter((file) => videoMimeTypes.has(file.type)));
   }
 
   async function stageImageUpload(file: File): Promise<string> {
@@ -220,10 +238,18 @@ export function AdminManager({
     setMessage("");
     let createdProjectId: number | null = null;
     try {
+      const selectedMediaCount = files.length + videoFiles.length;
+      if (selectedMediaCount > MAX_PROJECT_MEDIA) {
+        throw new Error("每个作品一次最多选择十二个媒体文件。");
+      }
       if (files.length > MAX_PROJECT_IMAGES) {
         throw new Error("每个作品最多上传十二张图片。");
       }
       const currentProject = projects.find((project) => project.id === editingId);
+      const currentMediaCount = (currentProject?.images.length ?? 0) + (currentProject?.videos.length ?? 0);
+      if (currentMediaCount + selectedMediaCount > MAX_PROJECT_MEDIA) {
+        throw new Error("当前已有媒体加上新上传内容不能超过十二个。");
+      }
       if ((currentProject?.images.length ?? 0) + files.length > MAX_PROJECT_IMAGES) {
         throw new Error("当前已有图片加上新上传图片不能超过十二张。");
       }
@@ -290,7 +316,6 @@ export function AdminManager({
       setFiles([]);
       setVideoFiles([]);
       setFileKey((value) => value + 1);
-      setVideoFileKey((value) => value + 1);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : "保存失败";
       if (createdProjectId) {
@@ -376,10 +401,17 @@ export function AdminManager({
       if (oversizedProfileFile) {
         throw new Error(`“${oversizedProfileFile.name}”超过十五兆，请压缩后重试。`);
       }
+      if (profile.awardImageKeys.length + awardFiles.length > MAX_AWARD_IMAGES) {
+        throw new Error("奖项与展览图片最多上传八张。");
+      }
+      const oversizedAwardFile = awardFiles.find((file) => file.size > MAX_IMAGE_BYTES);
+      if (oversizedAwardFile) {
+        throw new Error(`“${oversizedAwardFile.name}”超过十五兆，请压缩后重试。`);
+      }
       let result = await request<{ error?: string; profile?: ProfileContent }>("/api/admin/profile", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...profileForm, imageKeys: profile.imageKeys }),
+        body: JSON.stringify({ ...profileForm, imageKeys: profile.imageKeys, awardImageKeys: profile.awardImageKeys }),
       });
       let nextProfile = result.profile ?? profile;
       if (profileFiles.length) {
@@ -393,10 +425,23 @@ export function AdminManager({
           nextProfile = result.profile ?? nextProfile;
         }
       }
+      if (awardFiles.length) {
+        for (const file of awardFiles) {
+          const tempKey = await stageImageUpload(file);
+          result = await request<{ error?: string; profile?: ProfileContent }>("/api/admin/profile/award-image", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ tempKey }),
+          });
+          nextProfile = result.profile ?? nextProfile;
+        }
+      }
       setProfile(nextProfile);
       setProfileForm(toProfileForm(nextProfile));
       setProfileFiles([]);
+      setAwardFiles([]);
       setProfileFileKey((value) => value + 1);
+      setAwardFileKey((value) => value + 1);
       setProfileMessage("本人介绍已保存");
     } catch (caught) {
       setProfileError(caught instanceof Error ? caught.message : "保存本人介绍失败");
@@ -426,6 +471,30 @@ export function AdminManager({
       setProfileMessage("本人图片已删除");
     } catch (caught) {
       setProfileError(caught instanceof Error ? caught.message : "删除本人图片失败");
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  async function removeAwardImage(imageKey: string) {
+    if (!window.confirm("确定删除这张奖项与展览图片吗？")) return;
+    setProfileBusy(true);
+    setProfileError("");
+    setProfileMessage("");
+    try {
+      const result = await request<{ error?: string; profile?: ProfileContent }>(`/api/admin/profile/award-image?key=${encodeURIComponent(imageKey)}`, {
+        method: "DELETE",
+      });
+      const nextProfile = result.profile ?? {
+        ...profile,
+        awardImageKeys: profile.awardImageKeys.filter((key) => key !== imageKey),
+        awardImageUrls: profile.awardImageUrls.filter((_, index) => profile.awardImageKeys[index] !== imageKey),
+      };
+      setProfile(nextProfile);
+      setProfileForm(toProfileForm(nextProfile));
+      setProfileMessage("奖项与展览图片已删除");
+    } catch (caught) {
+      setProfileError(caught instanceof Error ? caught.message : "删除奖项与展览图片失败");
     } finally {
       setProfileBusy(false);
     }
@@ -504,9 +573,16 @@ export function AdminManager({
   }
 
   const editingProject = projects.find((project) => project.id === editingId);
+  const editingMedia = editingProject
+    ? [
+      ...editingProject.images.map((image) => ({ kind: "image" as const, id: image.id, url: image.url, altText: image.altText })),
+      ...editingProject.videos.map((video) => ({ kind: "video" as const, id: video.id, url: video.url, altText: video.altText })),
+    ]
+    : [];
+  const selectedMediaCount = files.length + videoFiles.length;
 
   return <div className="admin-accordion">
-    <details className="admin-panel">
+    <details className="admin-panel project-admin-panel">
       <summary><span>作品提交</span><small>新增作品、修改内容、上传图片或视频，作品详情页可下架</small></summary>
       <div className="admin-workspace">
         <section className="admin-list" aria-labelledby="project-list-title">
@@ -537,11 +613,13 @@ export function AdminManager({
             <label className="form-wide"><span>设计概念</span><textarea rows={5} value={form.concept} onChange={(event) => setForm({ ...form, concept: event.target.value })} /></label>
             <label><span>标签</span><input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder="用逗号分隔" /></label>
             <label className="checkbox-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} /><span>设为精选</span></label>
-            <label className="form-wide upload-field"><span>作品图片</span><input key={fileKey} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><small>一次可选多张；系统会逐张上传。单张不超过十五兆，每个项目最多十二张。</small></label>
-            <label className="form-wide upload-field"><span>视频作品</span><input key={videoFileKey} type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v" multiple onChange={(event) => setVideoFiles(Array.from(event.target.files ?? []))} /><small>视频单独作为作品媒体；支持 MP4、WEBM、MOV、M4V。单个不超过 200MB，每个项目最多四个视频。</small></label>
+            <label className="form-wide upload-field"><span>作品媒体</span><input key={fileKey} type="file" accept={mediaAccept} multiple onChange={(event) => handleProjectMediaSelection(Array.from(event.target.files ?? []))} /><small>图片和视频可一起选择；保存时图片永远排在前，视频排在最后。图片单张不超过十五兆，视频单个不超过 200MB，合计最多十二个媒体文件，视频最多四个。</small></label>
           </div>
-          {editingProject?.images.length ? <div className="admin-media-block"><p>已上传图片</p><div className="admin-image-grid">{editingProject.images.map((image) => <figure key={image.id}><img src={image.url} alt={image.altText} /><button type="button" onClick={() => removeImage(image.id)} disabled={busy}>删除图片</button></figure>)}</div></div> : null}
-          {editingProject?.videos.length ? <div className="admin-media-block"><p>已上传视频</p><div className="admin-video-grid">{editingProject.videos.map((video) => <figure key={video.id}><video src={video.url} controls preload="metadata" /><button type="button" onClick={() => removeVideo(video.id)} disabled={busy}>删除视频</button></figure>)}</div></div> : null}
+          {selectedMediaCount ? <p className="media-selection-note">已选择 {files.length} 张图片、{videoFiles.length} 个视频。</p> : null}
+          {editingMedia.length ? <div className="admin-media-block"><p>已上传媒体</p><div className="admin-media-grid">{editingMedia.map((item) => <figure key={`${item.kind}-${item.id}`}>
+            {item.kind === "image" ? <img src={item.url} alt={item.altText} /> : <><video src={item.url} controls preload="metadata" /><span className="media-badge">视频</span></>}
+            <button type="button" onClick={() => item.kind === "image" ? removeImage(item.id) : removeVideo(item.id)} disabled={busy}>删除{item.kind === "image" ? "图片" : "视频"}</button>
+          </figure>)}</div></div> : null}
           <div className="form-actions"><button type="submit" disabled={busy}>{busy ? "正在保存…" : editingId ? "保存修改" : "提交作品"}</button><span>提交后会显示在你的作品页；进入作品详情页可在作品概述下方下架。</span></div>
           {message ? <p className="form-message" role="status">{message}</p> : null}
           {error ? <p className="form-message error" role="alert">{error}</p> : null}
@@ -549,7 +627,7 @@ export function AdminManager({
       </div>
     </details>
 
-    <details className="admin-panel">
+    <details className="admin-panel profile-admin-panel">
       <summary><span>本人介绍</span><small>上传本人图片，修改自我介绍、关注方向、经历和奖项</small></summary>
       <form className="admin-form profile-admin-form" onSubmit={submitProfile}>
         <div className="profile-admin-preview">
@@ -569,6 +647,14 @@ export function AdminManager({
           <label className="form-wide"><span>教育经历</span><textarea rows={4} value={profileForm.education} onChange={(event) => setProfileForm({ ...profileForm, education: event.target.value })} /></label>
           <label className="form-wide"><span>实践经历</span><textarea rows={4} value={profileForm.experience} onChange={(event) => setProfileForm({ ...profileForm, experience: event.target.value })} /></label>
           <label className="form-wide"><span>奖项与展览</span><textarea rows={4} value={profileForm.awards} onChange={(event) => setProfileForm({ ...profileForm, awards: event.target.value })} /></label>
+          <div className="form-wide award-admin-media">
+            <label className="upload-field"><span>上传奖项与展览图片</span><input key={awardFileKey} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(event) => setAwardFiles(Array.from(event.target.files ?? []))} /><small>最多八张，每张不超过十五兆；会显示在本人介绍页“奖项与展览”文字下方。</small></label>
+            {profile.awardImageUrls.length ? <div className="award-admin-grid">{profile.awardImageUrls.map((url, index) => <figure key={profile.awardImageKeys[index] ?? url}>
+              <img src={url} alt={`奖项与展览图片 ${index + 1}`} />
+              <button type="button" className="quiet" onClick={() => removeAwardImage(profile.awardImageKeys[index])} disabled={profileBusy}>删除</button>
+            </figure>)}</div> : <p className="media-selection-note">还没有上传奖项与展览图片。</p>}
+            {awardFiles.length ? <p className="media-selection-note">已选择 {awardFiles.length} 张奖项与展览图片。</p> : null}
+          </div>
         </div>
         <div className="form-actions"><button type="submit" disabled={profileBusy}>{profileBusy ? "正在保存…" : "保存本人介绍"}</button><span>保存后，本人介绍页面会自动更新。</span></div>
         {profileMessage ? <p className="form-message" role="status">{profileMessage}</p> : null}
@@ -576,7 +662,7 @@ export function AdminManager({
       </form>
     </details>
 
-    <details className="admin-panel">
+    <details className="admin-panel contact-admin-panel">
       <summary><span>联系信息</span><small>增加、修改、删除邮箱、社交平台和作品平台</small></summary>
       <section className="admin-contact-panel" aria-labelledby="contact-list-title">
         <div className="admin-section-head"><div><p className="eyebrow">社区展示</p><h2 id="contact-list-title">联系信息</h2></div><button type="button" className="quiet" onClick={startNewContact}>新增入口</button></div>

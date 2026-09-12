@@ -59,6 +59,11 @@ export default async function CommunityProjectPage({ params }: { params: Promise
     url,
     altText: `${project.authorName}本人介绍图片 ${index + 1}`,
   }));
+  const visibleContactLinks = authorContactLinks.filter((link) => (
+    !link.id.startsWith("default-")
+    && link.value
+    && !/待补充/.test(link.value)
+  ));
   const galleryItems = [
     ...project.images.map((image, index) => ({
       id: `image-${image.id}`,
@@ -75,7 +80,7 @@ export default async function CommunityProjectPage({ params }: { params: Promise
   ];
 
   return <main className="project-page">
-    <section className="project-detail section-pad">
+    <section className="project-detail community-detail section-pad">
       <aside className="project-detail-meta" data-reveal>
         <section className="community-author-card" aria-label="作者资料">
           <p className="eyebrow">作者资料</p>
@@ -95,22 +100,24 @@ export default async function CommunityProjectPage({ params }: { params: Promise
             {authorProfile.experience ? <div><dt>实践经历</dt><dd>{authorProfile.experience}</dd></div> : null}
             {authorProfile.awards ? <div><dt>奖项与展览</dt><dd>{authorProfile.awards}</dd></div> : null}
           </dl>
-          {authorContactLinks.length ? <div className="community-contact-panel" aria-label="联系展示区">
+          {visibleContactLinks.length ? <div className="community-contact-panel" aria-label="联系展示区">
             <p>联系展示区</p>
-            <div>{authorContactLinks.map((link) => <CommunityContactItem link={link} key={link.id} />)}</div>
+            <div>{visibleContactLinks.map((link) => <CommunityContactItem link={link} key={link.id} />)}</div>
           </div> : null}
         </section>
-        <p className="eyebrow">社区作品</p>
-        <h1><span className="mask-line"><span data-reveal-line>{project.title}</span></span></h1>
-        <dl>
-          <div><dt>作者</dt><dd>{project.authorName}</dd></div>
-          <div><dt>设计年份</dt><dd>{project.year}</dd></div>
-          <div><dt>设计主题</dt><dd>{project.category}</dd></div>
-          {project.summary ? <div><dt>作品概述</dt><dd>{project.summary}</dd></div> : null}
-        </dl>
-        {project.tags.length ? <ul>{project.tags.map((tag) => <li key={tag}>{tag}</li>)}</ul> : null}
       </aside>
       <div className="project-detail-body">
+        <header className="community-project-overview" data-reveal>
+          <p className="eyebrow">社区作品</p>
+          <h1><span className="mask-line"><span data-reveal-line>{project.title}</span></span></h1>
+          <dl>
+            <div><dt>作者</dt><dd>{project.authorName}</dd></div>
+            <div><dt>设计年份</dt><dd>{project.year}</dd></div>
+            <div><dt>设计主题</dt><dd>{project.category}</dd></div>
+            {project.summary ? <div className="wide"><dt>作品概述</dt><dd>{project.summary}</dd></div> : null}
+          </dl>
+          {project.tags.length ? <ul>{project.tags.map((tag) => <li key={tag}>{tag}</li>)}</ul> : null}
+        </header>
         <ImageLightbox
           images={galleryItems}
           className={`project-image-grid media-count-${galleryItems.length}`}

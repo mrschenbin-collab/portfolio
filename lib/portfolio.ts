@@ -42,6 +42,10 @@ export type CommunityProject = PortfolioProject & {
   authorName: string;
 };
 
+const maxProjectImages = 12;
+const maxProjectVideos = 4;
+const maxProjectMedia = 12;
+
 function parseTags(value: string): string[] {
   try {
     const parsed = JSON.parse(value);
@@ -381,7 +385,13 @@ export async function addProjectImages(authorId: string, projectId: number, keys
     projectId: `eq.${projectId}`,
     order: "sortOrder.asc,id.asc",
   }));
-  if (existing.length + keys.length > 12) return null;
+  const existingVideos = await dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
+    select: "id",
+    authorId: `eq.${authorId}`,
+    projectId: `eq.${projectId}`,
+  }));
+  if (existing.length + keys.length > maxProjectImages) return null;
+  if (existing.length + existingVideos.length + keys.length > maxProjectMedia) return null;
   const now = new Date().toISOString();
   const rows = keys.map((key, index) => ({
     authorId,
@@ -405,7 +415,13 @@ export async function addProjectVideos(authorId: string, projectId: number, keys
     projectId: `eq.${projectId}`,
     order: "sortOrder.asc,id.asc",
   }));
-  if (existing.length + keys.length > 4) return null;
+  const existingImages = await dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
+    select: "id",
+    authorId: `eq.${authorId}`,
+    projectId: `eq.${projectId}`,
+  }));
+  if (existing.length + keys.length > maxProjectVideos) return null;
+  if (existingImages.length + existing.length + keys.length > maxProjectMedia) return null;
   const now = new Date().toISOString();
   const rows = keys.map((key, index) => ({
     authorId,
@@ -520,10 +536,10 @@ export async function canReadMediaKey(viewerId: string, key: string): Promise<bo
   }
 
   const profiles = await dbSelect<StoredProfile>("profiles", new URLSearchParams({
-    select: "authorId,imageKey,imageKeys",
+    select: "*",
   }));
   const profile = profiles.find((row) => (
-    new Set([row.imageKey, ...(row.imageKeys ?? [])].filter(Boolean)).has(safeKey)
+    new Set([row.imageKey, ...(row.imageKeys ?? []), ...(row.awardImageKeys ?? [])].filter(Boolean)).has(safeKey)
   ));
   if (!profile) return false;
   if (profile.authorId === viewerId) return true;

@@ -4,8 +4,12 @@ import sharp from "sharp";
 import type { Metadata } from "sharp";
 import {
   createSignedStorageReadUrl,
+  createSignedStorageReadUrls,
   createSignedStorageUpload,
+  downloadStorageObjectRange,
   downloadStorageObject,
+  getStorageObjectInfo,
+  moveStorageObject,
   removeStorageObjects,
   uploadStorageObject,
 } from "@/lib/supabase";
@@ -28,6 +32,7 @@ export const allowedVideoTypes = new Map([
 ]);
 
 const maxImageBytes = 15 * 1024 * 1024;
+const maxDisplayImageSide = 3840;
 const maxImageSide = 12000;
 const maxImagePixels = 80_000_000;
 const maxVideoBytes = 200 * 1024 * 1024;
@@ -144,21 +149,31 @@ async function prepareImageBuffer(original: Buffer, declaredType = ""): Promise<
     return {
       extension: "jpg",
       contentType: "image/jpeg",
-      body: await sharp(original).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer(),
+      body: await sharp(original)
+        .rotate()
+        .resize({ width: maxDisplayImageSide, height: maxDisplayImageSide, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 88, mozjpeg: true })
+        .toBuffer(),
     };
   }
   if (detected.extension === "png") {
     return {
       extension: "png",
       contentType: "image/png",
-      body: await sharp(original).png({ compressionLevel: 9 }).toBuffer(),
+      body: await sharp(original)
+        .resize({ width: maxDisplayImageSide, height: maxDisplayImageSide, fit: "inside", withoutEnlargement: true })
+        .png({ compressionLevel: 9 })
+        .toBuffer(),
     };
   }
   if (detected.extension === "webp") {
     return {
       extension: "webp",
       contentType: "image/webp",
-      body: await sharp(original).webp({ quality: 92 }).toBuffer(),
+      body: await sharp(original)
+        .resize({ width: maxDisplayImageSide, height: maxDisplayImageSide, fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 88 })
+        .toBuffer(),
     };
   }
 
@@ -248,15 +263,25 @@ export async function finalizeVideoUpload(userId: string, tempKey: string, prefi
   }
 
   try {
-    const temporary = await downloadStorageObject(normalizedTempKey);
-    if (temporary.body.length > maxVideoBytes) throw new Error("单个视频不能超过 200MB");
-    const storedType = temporary.contentType.split(";")[0]?.trim() ?? "";
+    const info = await getStorageObjectInfo(normalizedTempKey);
+    if (!info.contentLength || info.contentLength > maxVideoBytes) throw new Error("单个视频不能超过 200MB");
+    const header = await downloadStorageObjectRange(normalizedTempKey, 0, 4095);
+    const storedType = normalizeContentType(info.contentType || header.contentType);
     const declaredType = allowedVideoTypes.has(storedType) ? storedType : "";
-    const prepared = prepareVideoBuffer(temporary.body, declaredType);
+    const detected = detectVideo(header.body, declaredType);
+    if (!detected) throw new Error("视频格式无效，请上传真实的 MP4、WEBM、MOV 或 M4V 文件");
+    if (
+      declaredType
+      && declaredType !== detected.contentType
+      && !(declaredType === "video/quicktime" && detected.contentType === "video/mp4")
+      && !(declaredType === "video/mp4" && detected.contentType === "video/quicktime")
+    ) {
+      throw new Error("视频实际格式与文件类型不一致，请重新导出后上传");
+    }
 
     const safePrefix = safeSegment(prefix, "video").slice(0, 32);
-    const key = `${safePrefix}-${randomUUID()}.${prepared.extension}`;
-    await uploadStorageObject(`${mediaPrefix}/${key}`, prepared.body, prepared.contentType);
+    const key = `${safePrefix}-${randomUUID()}.${detected.extension}`;
+    await moveStorageObject(normalizedTempKey, `${mediaPrefix}/${key}`);
     return key;
   } finally {
     await removeStorageObjects([normalizedTempKey]).catch(() => undefined);
@@ -277,6 +302,18 @@ export async function createMediaReadUrl(key: string, expiresIn = 60): Promise<s
   const safeKey = cleanMediaKey(key);
   if (!safeKey) return null;
   return createSignedStorageReadUrl(`${mediaPrefix}/${safeKey}`, expiresIn);
+}
+
+export async function createMediaReadUrlMap(keys: string[], expiresIn = 600): Promise<Map<string, string>> {
+  const safeKeys = [...new Set(keys.map(cleanMediaKey).filter(Boolean))];
+  const paths = safeKeys.map((key) => `${mediaPrefix}/${key}`);
+  const signedPaths = await createSignedStorageReadUrls(paths, expiresIn);
+  const signedKeys = new Map<string, string>();
+  for (const key of safeKeys) {
+    const signed = signedPaths.get(`${mediaPrefix}/${key}`);
+    if (signed) signedKeys.set(key, signed);
+  }
+  return signedKeys;
 }
 
 export async function createImageReadUrl(key: string, expiresIn = 60): Promise<string | null> {

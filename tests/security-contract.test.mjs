@@ -24,11 +24,19 @@ test("runtime persistence uses Supabase instead of local JSON/files", async () =
 });
 
 test("large images use direct signed upload and signed private reads", async () => {
-  const manager = await read("components/admin-manager.tsx");
-  const mediaRoute = await read("app/api/media/[key]/route.ts");
+  const [manager, mediaRoute, supabase, portfolio, profile] = await Promise.all([
+    read("components/admin-manager.tsx"),
+    read("app/api/media/[key]/route.ts"),
+    read("lib/supabase.ts"),
+    read("lib/portfolio.ts"),
+    read("lib/profile.ts"),
+  ]);
   assert.match(manager, /stageImageUpload/);
   assert.match(manager, /ticket\.signedUrl/);
   assert.match(manager, /method: "PUT"/);
+  assert.match(supabase, /createSignedStorageReadUrls/);
+  assert.match(portfolio, /withSignedMediaUrls/);
+  assert.match(profile, /withSignedProfileUrls/);
   assert.match(mediaRoute, /createMediaReadUrl/);
   assert.match(mediaRoute, /status: 307/);
 });
@@ -46,6 +54,7 @@ test("required Vercel and Supabase files exist", async () => {
     "supabase/migrations/001_initial.sql",
     "supabase/migrations/002_registration_capacity.sql",
     "supabase/migrations/003_project_videos.sql",
+    "supabase/migrations/005_restrict_registration_rpc.sql",
     "app/api/admin/uploads/sign/route.ts",
     "app/api/admin/projects/[id]/videos/route.ts",
     "app/api/admin/videos/[id]/route.ts",
@@ -66,6 +75,10 @@ test("video uploads stay private and server validated", async () => {
   assert.match(media, /const maxVideoBytes = 200 \* 1024 \* 1024/);
   assert.match(media, /detectVideo/);
   assert.match(media, /finalizeVideoUpload/);
+  assert.match(media, /getStorageObjectInfo/);
+  assert.match(media, /downloadStorageObjectRange/);
+  assert.match(media, /moveStorageObject/);
+  assert.doesNotMatch(media, /const temporary = await downloadStorageObject\(normalizedTempKey\);\s*if \(temporary\.body\.length > maxVideoBytes\)/);
   assert.match(signRoute, /payload\.kind === "video"/);
   assert.match(portfolio, /project_videos/);
   assert.match(migration, /public\.project_videos/);
@@ -89,9 +102,10 @@ test("image uploads tolerate mobile JPG MIME aliases while still validating byte
 });
 
 test("registration uses open email signups with a race-safe 20-user cap", async () => {
-  const [auth, migration, envExample] = await Promise.all([
+  const [auth, migration, rpcRestrictionMigration, envExample] = await Promise.all([
     read("lib/auth.ts"),
     read("supabase/migrations/002_registration_capacity.sql"),
+    read("supabase/migrations/005_restrict_registration_rpc.sql"),
     read(".env.example"),
   ]);
 
@@ -102,6 +116,10 @@ test("registration uses open email signups with a race-safe 20-user cap", async 
   assert.match(migration, /pg_advisory_xact_lock/);
   assert.match(migration, /select count\(\*\) from public\.users/);
   assert.match(migration, /MAX_REGISTERED_USERS_REACHED/);
+  assert.match(rpcRestrictionMigration, /revoke execute on function public\.register_user_with_capacity/);
+  assert.match(rpcRestrictionMigration, /from anon/);
+  assert.match(rpcRestrictionMigration, /from authenticated/);
+  assert.match(rpcRestrictionMigration, /grant execute on function public\.register_user_with_capacity[\s\S]*to service_role/);
 });
 
 test("OTP send limits use the 10-minute window and no one-hour lockout", async () => {
@@ -114,4 +132,11 @@ test("OTP send limits use the 10-minute window and no one-hour lockout", async (
   assert.match(auth, /请等待 60 秒后再次获取验证码。/);
   assert.match(auth, /验证码请求过于频繁，请稍后再试。/);
   assert.doesNotMatch(auth, /一小时后再试|请填写有效邮箱|白名单|注册名单/);
+});
+
+test("rate limits prefer Netlify client IP header in production", async () => {
+  const auth = await read("lib/auth.ts");
+
+  assert.match(auth, /x-nf-client-connection-ip/);
+  assert.ok(auth.indexOf("x-nf-client-connection-ip") < auth.indexOf("x-forwarded-for"));
 });

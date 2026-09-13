@@ -3,6 +3,26 @@
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
+type MotionModules = {
+  gsap: typeof import("gsap").gsap;
+  ScrollTrigger: typeof import("gsap/ScrollTrigger").ScrollTrigger;
+  Lenis: typeof import("lenis").default;
+};
+
+let motionModulesPromise: Promise<MotionModules> | null = null;
+
+function loadMotionModules(): Promise<MotionModules> {
+  motionModulesPromise ??= Promise.all([
+    import("gsap"),
+    import("gsap/ScrollTrigger"),
+    import("lenis"),
+  ]).then(([{ gsap }, { ScrollTrigger }, { default: Lenis }]) => {
+    gsap.registerPlugin(ScrollTrigger);
+    return { gsap, ScrollTrigger, Lenis };
+  });
+  return motionModulesPromise;
+}
+
 export function MotionProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
@@ -12,23 +32,37 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
     async function init() {
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (reduced) return;
-      const [{ gsap }, { ScrollTrigger }, { default: Lenis }] = await Promise.all([
-        import("gsap"), import("gsap/ScrollTrigger"), import("lenis"),
-      ]);
+      const { gsap, ScrollTrigger, Lenis } = await loadMotionModules();
       if (cancelled) return;
-      gsap.registerPlugin(ScrollTrigger);
       const lenis = new Lenis({ lerp: 0.085, smoothWheel: true, anchors: true });
       const onScroll = () => ScrollTrigger.update();
       lenis.on("scroll", onScroll);
       const ticker = (time: number) => lenis.raf(time * 1000);
       gsap.ticker.add(ticker);
       gsap.ticker.lagSmoothing(0);
+      cleanup = () => { lenis.destroy(); gsap.ticker.remove(ticker); };
+    }
+    init();
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cleanup = () => {};
+    let cancelled = false;
+    async function initPageMotion() {
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduced) return;
+      const { gsap, ScrollTrigger } = await loadMotionModules();
+      if (cancelled) return;
       const ctx = gsap.context(() => {
-        gsap.fromTo("[data-reveal-line]", { yPercent: 108 }, { yPercent: 0, duration: 1.15, stagger: 0.1, ease: "power4.out", delay: 0.08 });
-        gsap.fromTo("[data-reveal]", { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, stagger: 0.08, ease: "power3.out", delay: 0.35 });
+        gsap.fromTo("[data-reveal-line]", { yPercent: 108 }, { yPercent: 0, duration: 0.6, stagger: 0.06, ease: "power4.out", delay: 0.03 });
+        gsap.fromTo("[data-reveal]", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, stagger: 0.05, ease: "power3.out", delay: 0.08 });
         document.querySelectorAll<HTMLElement>("[data-image-reveal]").forEach((element) => {
           gsap.fromTo(element, { clipPath: "inset(100% 0 0 0)", scale: 1.055 }, {
-            clipPath: "inset(0% 0 0 0)", scale: 1, duration: 1.05, ease: "power4.out",
+            clipPath: "inset(0% 0 0 0)", scale: 1, duration: 0.55, ease: "power4.out",
             scrollTrigger: { trigger: element, start: "top 86%", once: true },
           });
         });
@@ -42,10 +76,10 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
           }});
         }
       });
-      cleanup = () => { ctx.revert(); lenis.destroy(); gsap.ticker.remove(ticker); };
+      cleanup = () => { ctx.revert(); };
       ScrollTrigger.refresh();
     }
-    init();
+    initPageMotion();
     return () => {
       cancelled = true;
       cleanup();

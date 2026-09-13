@@ -360,13 +360,15 @@ function isSecureRequest(request: Request): boolean {
 }
 
 export function clientIpFromRequest(request: Request): string {
-  // Vercel overwrites X-Forwarded-For to prevent spoofing. x-vercel-forwarded-for
-  // is preferred when present, then the standard Vercel forwarded header.
-  const rawIp = request.headers.get("x-vercel-forwarded-for")
-    || request.headers.get("x-forwarded-for")
-    || request.headers.get("x-real-ip")
+  // Netlify sets x-nf-client-connection-ip from the edge connection. Other
+  // forwarding headers are kept only as compatibility fallbacks for local
+  // preview or future platform moves.
+  const rawIp = request.headers.get("x-nf-client-connection-ip")
     || request.headers.get("cf-connecting-ip")
-    || request.headers.get("eo-connecting-ip");
+    || request.headers.get("eo-connecting-ip")
+    || request.headers.get("x-real-ip")
+    || request.headers.get("x-vercel-forwarded-for")
+    || request.headers.get("x-forwarded-for");
   const firstIp = rawIp?.split(",")[0]?.trim();
   return rateLimitIp(firstIp);
 }

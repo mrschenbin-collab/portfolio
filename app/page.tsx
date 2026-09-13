@@ -2,21 +2,21 @@ import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser } from "@/lib/auth";
 
 const inspirationImages = [
-  { src: "/public-inspiration-01.png", alt: "公共视觉灵感雕塑图" },
-  { src: "/public-inspiration-02.png", alt: "公共视觉灵感几何构成图" },
-  { src: "/public-inspiration-03.png", alt: "公共视觉灵感水彩人物图" },
-  { src: "/public-inspiration-04.png", alt: "公共视觉灵感未来场景图" },
-  { src: "/public-inspiration-05.png", alt: "公共视觉灵感拼贴人物图" },
-  { src: "/public-inspiration-06.png", alt: "公共视觉灵感花卉拼贴图" },
+  { src: "/public-inspiration-01.webp", alt: "公共视觉灵感雕塑图" },
+  { src: "/public-inspiration-02.webp", alt: "公共视觉灵感几何构成图" },
+  { src: "/public-inspiration-03.webp", alt: "公共视觉灵感水彩人物图" },
+  { src: "/public-inspiration-04.webp", alt: "公共视觉灵感未来场景图" },
+  { src: "/public-inspiration-05.webp", alt: "公共视觉灵感拼贴人物图" },
+  { src: "/public-inspiration-06.webp", alt: "公共视觉灵感花卉拼贴图" },
 ];
 
 const disciplineImages = [
-  { src: "/discipline-visual-identity.png", alt: "视觉识别设计海报" },
-  { src: "/discipline-poster-design.png", alt: "海报设计海报" },
-  { src: "/discipline-brand-design.png", alt: "品牌设计海报" },
-  { src: "/discipline-editorial-design.png", alt: "编辑设计海报" },
-  { src: "/discipline-type-experiment.png", alt: "字体实验海报" },
-  { src: "/discipline-motion-visual.png", alt: "动态视觉海报" },
+  { src: "/discipline-visual-identity.webp", alt: "视觉识别设计海报" },
+  { src: "/discipline-poster-design.webp", alt: "海报设计海报" },
+  { src: "/discipline-brand-design.webp", alt: "品牌设计海报" },
+  { src: "/discipline-editorial-design.webp", alt: "编辑设计海报" },
+  { src: "/discipline-type-experiment.webp", alt: "字体实验海报" },
+  { src: "/discipline-motion-visual.webp", alt: "动态视觉海报" },
 ];
 
 export default async function Home() {
@@ -38,7 +38,7 @@ export default async function Home() {
           <div className="inspiration-grid">
             {inspirationImages.map((image) => (
               <figure key={image.src}>
-                <img src={image.src} alt={image.alt} />
+                <img src={image.src} alt={image.alt} width={1086} height={1448} loading="lazy" decoding="async" />
               </figure>
             ))}
           </div>
@@ -77,7 +77,7 @@ export default async function Home() {
         <div className="discipline-grid">
           {disciplineImages.map((image) => (
             <article key={image.src} className="discipline-image-card" data-image-reveal>
-              <img src={image.src} alt={image.alt} />
+              <img src={image.src} alt={image.alt} width={1086} height={1448} loading="lazy" decoding="async" />
             </article>
           ))}
         </div>

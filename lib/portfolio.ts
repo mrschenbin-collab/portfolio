@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { StoredProject, StoredProjectImage, StoredProjectVideo, StoredProfile, StoredUser } from "@/lib/file-store";
-import { cleanMediaKey, deleteImageFile, deleteVideoFile, mediaUrl } from "@/lib/file-media";
+import { cleanMediaKey, createMediaReadUrlMap, deleteImageFile, deleteVideoFile, mediaUrl } from "@/lib/file-media";
 import type { ProjectInput } from "@/lib/project-input";
 import { dbDelete, dbInsert, dbSelect, dbUpdate } from "@/lib/supabase";
 
 export type PortfolioImage = {
   id: number;
+  objectKey: string;
   url: string;
   altText: string;
   sortOrder: number;
@@ -13,6 +14,7 @@ export type PortfolioImage = {
 
 export type PortfolioVideo = {
   id: number;
+  objectKey: string;
   url: string;
   altText: string;
   sortOrder: number;
@@ -64,6 +66,7 @@ function toProject(row: StoredProject, images: StoredProjectImage[], videos: Sto
       .filter((image) => image.projectId === row.id)
       .map((image) => ({
         id: Number(image.id),
+        objectKey: image.objectKey,
         url: mediaUrl(image.objectKey),
         altText: image.altText,
         sortOrder: image.sortOrder,
@@ -73,6 +76,7 @@ function toProject(row: StoredProject, images: StoredProjectImage[], videos: Sto
       .filter((video) => video.projectId === row.id)
       .map((video) => ({
         id: Number(video.id),
+        objectKey: video.objectKey,
         url: mediaUrl(video.objectKey),
         altText: video.altText,
         sortOrder: video.sortOrder,
@@ -81,8 +85,33 @@ function toProject(row: StoredProject, images: StoredProjectImage[], videos: Sto
   };
 }
 
-function attachMedia(rows: StoredProject[], images: StoredProjectImage[], videos: StoredProjectVideo[] = []): PortfolioProject[] {
-  return rows.map((row) => toProject(row, images, videos));
+async function withSignedMediaUrls(projects: PortfolioProject[]): Promise<PortfolioProject[]> {
+  const keys = projects.flatMap((project) => [
+    ...project.images.map((image) => image.objectKey),
+    ...project.videos.map((video) => video.objectKey),
+  ]);
+  if (!keys.length) return projects;
+
+  try {
+    const signedUrls = await createMediaReadUrlMap(keys);
+    if (!signedUrls.size) return projects;
+    return projects.map((project) => ({
+      ...project,
+      images: project.images.map((image) => ({ ...image, url: signedUrls.get(image.objectKey) ?? image.url })),
+      videos: project.videos.map((video) => ({ ...video, url: signedUrls.get(video.objectKey) ?? video.url })),
+    }));
+  } catch (error) {
+    console.error("[media] Batch signed URL generation failed; falling back to /api/media compatibility route.", error);
+    return projects;
+  }
+}
+
+async function attachMedia(rows: StoredProject[], images: StoredProjectImage[], videos: StoredProjectVideo[] = []): Promise<PortfolioProject[]> {
+  return withSignedMediaUrls(rows.map((row) => toProject(row, images, videos)));
+}
+
+async function attachSingleMedia(row: StoredProject, images: StoredProjectImage[], videos: StoredProjectVideo[] = []): Promise<PortfolioProject> {
+  return (await withSignedMediaUrls([toProject(row, images, videos)]))[0] ?? toProject(row, images, videos);
 }
 
 function getAuthorName(users: Pick<StoredUser, "id" | "name" | "email">[], authorId: string): string {
@@ -140,8 +169,9 @@ export async function getCommunityProjects(viewerId: string): Promise<CommunityP
     })),
     dbSelect<StoredUser>("users", { select: "id,name,email" }),
   ]);
-  return rows.map((project) => ({
-    ...toProject(project, images, videos),
+  const signedProjects = await attachMedia(rows, images, videos);
+  return signedProjects.map((project) => ({
+    ...project,
     authorName: getAuthorName(users, project.authorId),
   }));
 }
@@ -176,9 +206,20 @@ export async function getCommunityProject(viewerId: string, id: number): Promise
     })),
   ]);
   return {
-    ...toProject(project, images, videos),
+    ...await attachSingleMedia(project, images, videos),
     authorName: getAuthorName(users, project.authorId),
   };
+}
+
+export async function getCommunityProjectMetadata(viewerId: string, id: number): Promise<Pick<StoredProject, "title" | "summary"> | null> {
+  const rows = await dbSelect<Pick<StoredProject, "title" | "summary">>("projects", new URLSearchParams({
+    select: "title,summary",
+    id: `eq.${id}`,
+    authorId: `neq.${viewerId}`,
+    status: "eq.published",
+    limit: "1",
+  }));
+  return rows[0] ?? null;
 }
 
 export async function getPublishedProject(authorId: string, slug: string): Promise<PortfolioProject | null> {
@@ -191,19 +232,32 @@ export async function getPublishedProject(authorId: string, slug: string): Promi
   }));
   const project = rows[0];
   if (!project) return null;
-  const images = await dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
-    select: "*",
-    projectId: `eq.${project.id}`,
+  const [images, videos] = await Promise.all([
+    dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
+      select: "*",
+      projectId: `eq.${project.id}`,
+      authorId: `eq.${authorId}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+    dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
+      select: "*",
+      projectId: `eq.${project.id}`,
+      authorId: `eq.${authorId}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+  ]);
+  return attachSingleMedia(project, images, videos);
+}
+
+export async function getPublishedProjectMetadata(authorId: string, slug: string): Promise<Pick<StoredProject, "title" | "summary"> | null> {
+  const rows = await dbSelect<Pick<StoredProject, "title" | "summary">>("projects", new URLSearchParams({
+    select: "title,summary",
     authorId: `eq.${authorId}`,
-    order: "sortOrder.asc,id.asc",
+    slug: `eq.${slug}`,
+    status: "eq.published",
+    limit: "1",
   }));
-  const videos = await dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
-    select: "*",
-    projectId: `eq.${project.id}`,
-    authorId: `eq.${authorId}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  return toProject(project, images, videos);
+  return rows[0] ?? null;
 }
 
 export async function getAuthorProject(authorId: string, slug: string): Promise<PortfolioProject | null> {
@@ -215,19 +269,21 @@ export async function getAuthorProject(authorId: string, slug: string): Promise<
   }));
   const project = rows[0];
   if (!project) return null;
-  const images = await dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
-    select: "*",
-    projectId: `eq.${project.id}`,
-    authorId: `eq.${authorId}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  const videos = await dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
-    select: "*",
-    projectId: `eq.${project.id}`,
-    authorId: `eq.${authorId}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  return toProject(project, images, videos);
+  const [images, videos] = await Promise.all([
+    dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
+      select: "*",
+      projectId: `eq.${project.id}`,
+      authorId: `eq.${authorId}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+    dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
+      select: "*",
+      projectId: `eq.${project.id}`,
+      authorId: `eq.${authorId}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+  ]);
+  return attachSingleMedia(project, images, videos);
 }
 
 export async function getAllProjects(authorId: string): Promise<PortfolioProject[]> {
@@ -252,19 +308,21 @@ export async function getProjectById(authorId: string, id: number): Promise<Port
   }));
   const project = rows[0];
   if (!project) return null;
-  const images = await dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
-    select: "*",
-    authorId: `eq.${authorId}`,
-    projectId: `eq.${id}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  const videos = await dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
-    select: "*",
-    authorId: `eq.${authorId}`,
-    projectId: `eq.${id}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  return toProject(project, images, videos);
+  const [images, videos] = await Promise.all([
+    dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
+      select: "*",
+      authorId: `eq.${authorId}`,
+      projectId: `eq.${id}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+    dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
+      select: "*",
+      authorId: `eq.${authorId}`,
+      projectId: `eq.${id}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+  ]);
+  return attachSingleMedia(project, images, videos);
 }
 
 async function uniqueSlug(authorId: string, requested: string, excludeId?: number): Promise<string> {
@@ -307,19 +365,21 @@ export async function updateProject(authorId: string, id: number, input: Project
     id: `eq.${id}`,
   }));
   if (!updated[0]) return null;
-  const images = await dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
-    select: "*",
-    authorId: `eq.${authorId}`,
-    projectId: `eq.${id}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  const videos = await dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
-    select: "*",
-    authorId: `eq.${authorId}`,
-    projectId: `eq.${id}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  return toProject(updated[0], images, videos);
+  const [images, videos] = await Promise.all([
+    dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
+      select: "*",
+      authorId: `eq.${authorId}`,
+      projectId: `eq.${id}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+    dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
+      select: "*",
+      authorId: `eq.${authorId}`,
+      projectId: `eq.${id}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+  ]);
+  return attachSingleMedia(updated[0], images, videos);
 }
 
 export async function setProjectStatus(authorId: string, id: number, status: "draft" | "published"): Promise<PortfolioProject | null> {
@@ -331,19 +391,21 @@ export async function setProjectStatus(authorId: string, id: number, status: "dr
     id: `eq.${id}`,
   }));
   if (!updated[0]) return null;
-  const images = await dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
-    select: "*",
-    authorId: `eq.${authorId}`,
-    projectId: `eq.${id}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  const videos = await dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
-    select: "*",
-    authorId: `eq.${authorId}`,
-    projectId: `eq.${id}`,
-    order: "sortOrder.asc,id.asc",
-  }));
-  return toProject(updated[0], images, videos);
+  const [images, videos] = await Promise.all([
+    dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
+      select: "*",
+      authorId: `eq.${authorId}`,
+      projectId: `eq.${id}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+    dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
+      select: "*",
+      authorId: `eq.${authorId}`,
+      projectId: `eq.${id}`,
+      order: "sortOrder.asc,id.asc",
+    })),
+  ]);
+  return attachSingleMedia(updated[0], images, videos);
 }
 
 export async function deleteProject(authorId: string, id: number): Promise<string[] | null> {

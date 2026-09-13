@@ -1,5 +1,5 @@
 import { profile as defaultProfile } from "@/data/profile";
-import { mediaUrl } from "@/lib/file-media";
+import { createMediaReadUrlMap, mediaUrl } from "@/lib/file-media";
 import type { StoredProfile } from "@/lib/file-store";
 import { dbSelect, dbUpsert } from "@/lib/supabase";
 
@@ -81,6 +81,24 @@ function fromStored(row: StoredProfile): ProfileContent {
   });
 }
 
+async function withSignedProfileUrls(profile: ProfileContent): Promise<ProfileContent> {
+  const keys = [...profile.imageKeys, ...profile.awardImageKeys];
+  if (!keys.length) return profile;
+  try {
+    const signedUrls = await createMediaReadUrlMap(keys);
+    if (!signedUrls.size) return profile;
+    return {
+      ...profile,
+      imageUrl: profile.imageKey ? signedUrls.get(profile.imageKey) ?? profile.imageUrl : "",
+      imageUrls: profile.imageKeys.map((key, index) => signedUrls.get(key) ?? profile.imageUrls[index] ?? mediaUrl(key)),
+      awardImageUrls: profile.awardImageKeys.map((key, index) => signedUrls.get(key) ?? profile.awardImageUrls[index] ?? mediaUrl(key)),
+    };
+  } catch (error) {
+    console.error("[media] Profile signed URL generation failed; falling back to /api/media compatibility route.", error);
+    return profile;
+  }
+}
+
 export function defaultProfileContent(): ProfileContent {
   return withImageUrl({
     roleZh: defaultProfile.roleZh,
@@ -122,7 +140,7 @@ export async function getProfile(authorId: string): Promise<ProfileContent> {
     authorId: `eq.${authorId}`,
     limit: "1",
   }));
-  return rows[0] ? fromStored(rows[0]) : defaultProfileContent();
+  return withSignedProfileUrls(rows[0] ? fromStored(rows[0]) : defaultProfileContent());
 }
 
 export async function saveProfile(authorId: string, profile: ProfileInput): Promise<ProfileContent> {
@@ -140,7 +158,7 @@ export async function saveProfile(authorId: string, profile: ProfileInput): Prom
     awardImageKeys: normalized.awardImageKeys,
   };
   const rows = await dbUpsert<StoredProfile>("profiles", stored, "authorId");
-  return rows[0] ? fromStored(rows[0]) : normalized;
+  return withSignedProfileUrls(rows[0] ? fromStored(rows[0]) : normalized);
 }
 
 export function toStoredProfile(profile: ProfileContent): ProfileInput {

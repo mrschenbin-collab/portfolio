@@ -217,7 +217,7 @@ export function AdminManager({
       method: "PUT",
       headers: {
         "content-type": file.type || "application/octet-stream",
-        "cache-control": "max-age=0",
+        "cache-control": "max-age=600",
         "x-upsert": "false",
       },
       body: file,
@@ -238,7 +238,7 @@ export function AdminManager({
       method: "PUT",
       headers: {
         "content-type": file.type || "application/octet-stream",
-        "cache-control": "max-age=0",
+        "cache-control": "max-age=600",
         "x-upsert": "false",
       },
       body: file,

@@ -262,7 +262,48 @@ export async function downloadStorageObject(path: string): Promise<{ body: Buffe
   };
 }
 
-export async function uploadStorageObject(path: string, body: Buffer, contentType: string): Promise<void> {
+export async function downloadStorageObjectRange(
+  path: string,
+  start = 0,
+  end = 4095,
+): Promise<{ body: Buffer; contentType: string; contentLength: number | null }> {
+  const response = await fetch(`${storageBase()}/object/${bucketPath(path)}`, {
+    headers: adminHeaders({ range: `bytes=${start}-${end}` }),
+    cache: "no-store",
+  });
+  if (!response.ok && response.status !== 206) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`Supabase range download object failed (${response.status}): ${detail}`);
+  }
+  return {
+    body: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get("content-type") || "application/octet-stream",
+    contentLength: Number(response.headers.get("content-length")) || null,
+  };
+}
+
+export async function getStorageObjectInfo(path: string): Promise<{ contentType: string; contentLength: number | null }> {
+  const response = await fetch(`${storageBase()}/object/${bucketPath(path)}`, {
+    method: "HEAD",
+    headers: adminHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`Supabase object info failed (${response.status}): ${detail}`);
+  }
+  return {
+    contentType: response.headers.get("content-type") || "application/octet-stream",
+    contentLength: Number(response.headers.get("content-length")) || null,
+  };
+}
+
+export async function uploadStorageObject(
+  path: string,
+  body: Buffer,
+  contentType: string,
+  cacheControl = "private, max-age=600",
+): Promise<void> {
   // Node.js Buffer is valid at runtime for fetch, but newer DOM typings used by
   // Next.js/Netlify do not accept Buffer<ArrayBufferLike> as BodyInit. Copy the
   // bytes into a plain Uint8Array backed by ArrayBuffer so both the runtime and
@@ -273,7 +314,7 @@ export async function uploadStorageObject(path: string, body: Buffer, contentTyp
   const response = await fetch(`${storageBase()}/object/${bucketPath(path)}`, {
     method: "POST",
     headers: adminHeaders({
-      "cache-control": "private, max-age=0, no-store",
+      "cache-control": cacheControl,
       "content-type": contentType,
       "x-upsert": "false",
     }),
@@ -283,6 +324,24 @@ export async function uploadStorageObject(path: string, body: Buffer, contentTyp
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 500);
     throw new Error(`Supabase upload object failed (${response.status}): ${detail}`);
+  }
+}
+
+export async function moveStorageObject(fromPath: string, toPath: string): Promise<void> {
+  const { bucket } = config();
+  const response = await fetch(`${storageBase()}/object/move`, {
+    method: "POST",
+    headers: adminHeaders(jsonHeaders),
+    body: JSON.stringify({
+      bucketId: bucket,
+      sourceKey: fromPath.replace(/^\/+/, ""),
+      destinationKey: toPath.replace(/^\/+/, ""),
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`Supabase move object failed (${response.status}): ${detail}`);
   }
 }
 
@@ -311,6 +370,29 @@ export async function createSignedStorageReadUrl(path: string, expiresIn = 60): 
   });
   const data = await parseJsonResponse<{ signedURL: string }>(response, "Supabase create signed read URL");
   return encodeURI(`${storageBase()}${data.signedURL}`);
+}
+
+export async function createSignedStorageReadUrls(paths: string[], expiresIn = 600): Promise<Map<string, string>> {
+  const normalized = [...new Set(paths.map((item) => item.replace(/^\/+/, "")).filter(Boolean))];
+  const signed = new Map<string, string>();
+  if (!normalized.length) return signed;
+  const { bucket } = config();
+  const response = await fetch(`${storageBase()}/object/sign/${encodeURIComponent(bucket)}`, {
+    method: "POST",
+    headers: adminHeaders(jsonHeaders),
+    body: JSON.stringify({ expiresIn, paths: normalized }),
+    cache: "no-store",
+  });
+  const data = await parseJsonResponse<{ path: string; signedURL?: string; signedUrl?: string | null; error?: string }[]>(
+    response,
+    "Supabase create signed read URLs",
+  );
+  for (const item of data) {
+    const signedUrl = item.signedURL || item.signedUrl;
+    if (!item.path || !signedUrl || item.error) continue;
+    signed.set(item.path.replace(/^\/+/, ""), encodeURI(signedUrl.startsWith("http") ? signedUrl : `${storageBase()}${signedUrl}`));
+  }
+  return signed;
 }
 
 export function supabaseStorageBucketName(): string {

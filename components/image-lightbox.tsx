@@ -62,7 +62,13 @@ export function ImageLightbox({
         {image.type === "video" ? <>
           <video src={image.url} muted playsInline preload="metadata" />
           <span className="media-badge">视频</span>
-        </> : <img src={image.url} alt={image.altText} loading={index > 0 ? "lazy" : undefined} />}
+        </> : <img
+          src={image.url}
+          alt={image.altText}
+          loading={index > 0 ? "lazy" : "eager"}
+          decoding="async"
+          fetchPriority={index === 0 ? "high" : "auto"}
+        />}
       </button>)}
     </div> : empty}
 

@@ -4,14 +4,14 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { ProjectOwnerActions } from "@/components/project-owner-actions";
 import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser, requireAppUser } from "@/lib/auth";
-import { getAuthorProject, getPublishedProject, getPublishedProjects } from "@/lib/portfolio";
+import { getAuthorProject, getPublishedProjectMetadata, getPublishedProjects } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const user = await getCurrentUser();
   if (!user) return { title: "作品" };
-  const project = await getPublishedProject(user.id, (await params).slug);
+  const project = await getPublishedProjectMetadata(user.id, (await params).slug);
   return project ? { title: project.title, description: project.summary } : {};
 }
 

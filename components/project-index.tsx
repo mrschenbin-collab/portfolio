@@ -27,7 +27,13 @@ export function ProjectIndex({
         >
           <div className="project-card-image">
             {project.images[0]
-              ? <img src={project.images[0].url} alt={project.images[0].altText} />
+              ? <img
+                src={project.images[0].url}
+                alt={project.images[0].altText}
+                loading={index < 3 ? "eager" : "lazy"}
+                decoding="async"
+                fetchPriority={index === 0 ? "high" : "auto"}
+              />
               : project.videos[0]
                 ? <><video src={project.videos[0].url} muted playsInline preload="metadata" /><span className="media-badge">视频</span></>
                 : <div className={`art-surface ${project.tone}`}><span className="serif">{String(index + 1).padStart(2, "0")}</span><strong>{project.title}</strong></div>}

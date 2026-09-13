@@ -4,7 +4,7 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser, requireAppUser } from "@/lib/auth";
 import { getContactLinks, type ContactKind, type ContactLink } from "@/lib/contact-links";
-import { getCommunityProject, getCommunityProjects } from "@/lib/portfolio";
+import { getCommunityProject, getCommunityProjectMetadata, getCommunityProjects } from "@/lib/portfolio";
 import { getProfile } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const user = await getCurrentUser();
   const id = parseId((await params).id);
   if (!user || !id) return { title: "社区作品" };
-  const project = await getCommunityProject(user.id, id);
+  const project = await getCommunityProjectMetadata(user.id, id);
   return project ? { title: `${project.title}｜社区`, description: project.summary } : {};
 }
 

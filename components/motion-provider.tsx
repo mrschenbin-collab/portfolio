@@ -57,10 +57,12 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
       if (reduced) return;
       const { gsap, ScrollTrigger } = await loadMotionModules();
       if (cancelled) return;
+      let hasScrollTriggers = false;
       const ctx = gsap.context(() => {
         gsap.fromTo("[data-reveal-line]", { yPercent: 108 }, { yPercent: 0, duration: 0.6, stagger: 0.06, ease: "power4.out", delay: 0.03 });
         gsap.fromTo("[data-reveal]", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, stagger: 0.05, ease: "power3.out", delay: 0.08 });
         document.querySelectorAll<HTMLElement>("[data-image-reveal]").forEach((element) => {
+          hasScrollTriggers = true;
           gsap.fromTo(element, { clipPath: "inset(100% 0 0 0)", scale: 1.055 }, {
             clipPath: "inset(0% 0 0 0)", scale: 1, duration: 0.55, ease: "power4.out",
             scrollTrigger: { trigger: element, start: "top 86%", once: true },
@@ -69,6 +71,7 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
         const horizontal = document.querySelector<HTMLElement>("[data-horizontal]");
         const track = horizontal?.querySelector<HTMLElement>(".horizontal-track");
         if (horizontal && track && window.innerWidth >= 768) {
+          hasScrollTriggers = true;
           const travel = () => Math.max(0, track.scrollWidth - window.innerWidth);
           gsap.to(track, { x: () => -travel(), ease: "none", scrollTrigger: {
             trigger: horizontal, start: "top top", end: () => `+=${travel() + window.innerHeight * 0.7}`,
@@ -77,7 +80,7 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
         }
       });
       cleanup = () => { ctx.revert(); };
-      ScrollTrigger.refresh();
+      if (hasScrollTriggers) ScrollTrigger.refresh();
     }
     initPageMotion();
     return () => {

@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { ProjectIndex } from "@/components/project-index";
 import { requireAppUser } from "@/lib/auth";
-import { getCommunityProjects } from "@/lib/portfolio";
+import { getCommunityProjectSummaries } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "社区" };
 
 export default async function CommunityPage() {
   const user = await requireAppUser("/community");
-  const projects = await getCommunityProjects(user.id);
+  const projects = await getCommunityProjectSummaries(user.id);
 
   return <main className="page-main section-pad">
     <header className="page-hero page-hero-left">

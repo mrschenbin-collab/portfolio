@@ -1,6 +1,7 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { parseProjectVisibilityInput } from "@/lib/project-input";
 import { setProjectStatus } from "@/lib/portfolio";
+import { assertSameOrigin } from "@/lib/same-origin";
 
 function parseId(value: string): number | null {
   const id = Number(value);
@@ -9,6 +10,8 @@ function parseId(value: string): number | null {
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const id = parseId((await params).id);

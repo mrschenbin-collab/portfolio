@@ -1,8 +1,11 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { createImageUploadTicket, createVideoUploadTicket } from "@/lib/file-media";
+import { assertSameOrigin } from "@/lib/same-origin";
 
 export async function POST(request: Request) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const payload = await request.json() as Record<string, unknown>;

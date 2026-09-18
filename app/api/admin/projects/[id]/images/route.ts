@@ -1,10 +1,13 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { deleteImageFile, finalizeImageUpload } from "@/lib/file-media";
 import { addProjectImages, getProjectById } from "@/lib/portfolio";
+import { assertSameOrigin } from "@/lib/same-origin";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let storedKey = "";
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const id = Number((await params).id);

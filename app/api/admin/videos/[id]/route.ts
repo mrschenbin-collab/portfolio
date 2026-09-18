@@ -1,8 +1,11 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { deleteProjectVideo } from "@/lib/portfolio";
+import { assertSameOrigin } from "@/lib/same-origin";
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const id = Number((await params).id);

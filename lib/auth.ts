@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { sendVerificationEmail } from "@/lib/email";
 import {
   dbDelete,
@@ -390,7 +391,7 @@ export function clearSessionCookie(): string {
   return `${sessionCookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`;
 }
 
-export async function getCurrentUser(): Promise<AppUser | null> {
+export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   const requestHeaders = await headers();
   const session = parseCookie(requestHeaders.get("cookie"), sessionCookieName);
   const sessionUser = readSessionValue(session);
@@ -399,7 +400,7 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   if (!user) return null;
   const authVersion = Math.max(1, Number(user.authVersion) || 1);
   return authVersion === sessionUser.authVersion ? toPublicUser(user) : null;
-}
+});
 
 export async function requireAppUser(returnTo = "/admin"): Promise<AppUser> {
   const user = await getCurrentUser();

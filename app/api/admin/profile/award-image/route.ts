@@ -1,12 +1,15 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { deleteImageFile, finalizeImageUpload } from "@/lib/file-media";
 import { getProfile, saveProfile, toStoredProfile } from "@/lib/profile";
+import { assertSameOrigin } from "@/lib/same-origin";
 
 const maxAwardImages = 8;
 
 export async function POST(request: Request) {
   let storedKey = "";
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const current = await getProfile(user.id);
@@ -33,6 +36,8 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const current = await getProfile(user.id);

@@ -1,5 +1,6 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { getContactLinks, parseContactLinksInput, saveContactLinks } from "@/lib/contact-links";
+import { assertSameOrigin } from "@/lib/same-origin";
 
 export async function GET() {
   try {
@@ -13,6 +14,8 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const parsed = parseContactLinksInput(await request.json() as Record<string, unknown>);

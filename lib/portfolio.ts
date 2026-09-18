@@ -44,9 +44,49 @@ export type CommunityProject = PortfolioProject & {
   authorName: string;
 };
 
+export type PortfolioProjectSummary = Pick<
+  PortfolioProject,
+  "id" | "authorId" | "slug" | "title" | "year" | "category" | "summary" | "tags" | "tone" | "featured" | "images" | "videos"
+>;
+
+export type CommunityProjectSummary = PortfolioProjectSummary & {
+  authorName: string;
+};
+
+export type ArchiveProject = Pick<
+  PortfolioProject,
+  "id" | "slug" | "title" | "year" | "category" | "summary" | "tags" | "createdAt"
+>;
+
+export type NextProject = Pick<PortfolioProject, "id" | "slug" | "title">;
+
+type StoredCoverImage = Pick<StoredProjectImage, "id" | "projectId" | "objectKey" | "altText" | "sortOrder">;
+type StoredCoverVideo = Pick<StoredProjectVideo, "id" | "projectId" | "objectKey" | "altText" | "sortOrder">;
+type StoredProjectSummary = Pick<
+  StoredProject,
+  "id" | "authorId" | "slug" | "title" | "year" | "category" | "summary" | "tags" | "tone" | "featured"
+> & {
+  project_images?: StoredCoverImage[];
+  project_videos?: StoredCoverVideo[];
+};
+
 const maxProjectImages = 12;
 const maxProjectVideos = 4;
 const maxProjectMedia = 12;
+const projectSummarySelect = [
+  "id",
+  "authorId",
+  "slug",
+  "title",
+  "year",
+  "category",
+  "summary",
+  "tags",
+  "tone",
+  "featured",
+  "project_images(id,projectId,objectKey,altText,sortOrder)",
+  "project_videos(id,projectId,objectKey,altText,sortOrder)",
+].join(",");
 
 function parseTags(value: string): string[] {
   try {
@@ -119,6 +159,68 @@ function getAuthorName(users: Pick<StoredUser, "id" | "name" | "email">[], autho
   return user?.name || user?.email || "同学作者";
 }
 
+function toProjectSummary(row: StoredProjectSummary): PortfolioProjectSummary {
+  const image = row.project_images?.[0];
+  const video = image ? undefined : row.project_videos?.[0];
+  return {
+    id: Number(row.id),
+    authorId: row.authorId,
+    slug: row.slug,
+    title: row.title,
+    year: row.year,
+    category: row.category,
+    summary: row.summary,
+    tags: parseTags(row.tags),
+    tone: row.tone,
+    featured: row.featured,
+    images: image ? [{
+      id: Number(image.id),
+      objectKey: image.objectKey,
+      url: mediaUrl(image.objectKey),
+      altText: image.altText,
+      sortOrder: image.sortOrder,
+    }] : [],
+    videos: video ? [{
+      id: Number(video.id),
+      objectKey: video.objectKey,
+      url: mediaUrl(video.objectKey),
+      altText: video.altText,
+      sortOrder: video.sortOrder,
+    }] : [],
+  };
+}
+
+async function withSignedSummaryCoverUrls(projects: PortfolioProjectSummary[]): Promise<PortfolioProjectSummary[]> {
+  const keys = projects.flatMap((project) => [
+    ...project.images.map((image) => image.objectKey),
+    ...project.videos.map((video) => video.objectKey),
+  ]);
+  if (!keys.length) return projects;
+  try {
+    const signedUrls = await createMediaReadUrlMap(keys);
+    return projects.map((project) => ({
+      ...project,
+      images: project.images.map((image) => ({ ...image, url: signedUrls.get(image.objectKey) ?? image.url })),
+      videos: project.videos.map((video) => ({ ...video, url: signedUrls.get(video.objectKey) ?? video.url })),
+    }));
+  } catch (error) {
+    console.error("[media] Summary cover signing failed; falling back to /api/media compatibility route.", error);
+    return projects;
+  }
+}
+
+function projectSummaryParams(filters: Record<string, string>, order: string): URLSearchParams {
+  return new URLSearchParams({
+    select: projectSummarySelect,
+    ...filters,
+    order,
+    "project_images.order": "sortOrder.asc,id.asc",
+    "project_images.limit": "1",
+    "project_videos.order": "sortOrder.asc,id.asc",
+    "project_videos.limit": "1",
+  });
+}
+
 async function projectImagesForAuthor(authorId: string): Promise<StoredProjectImage[]> {
   return dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
     select: "*",
@@ -135,45 +237,64 @@ async function projectVideosForAuthor(authorId: string): Promise<StoredProjectVi
   }));
 }
 
-export async function getPublishedProjects(authorId: string): Promise<PortfolioProject[]> {
-  const [rows, images, videos] = await Promise.all([
-    dbSelect<StoredProject>("projects", new URLSearchParams({
-      select: "*",
-      authorId: `eq.${authorId}`,
-      status: "eq.published",
-      order: "year.desc,id.desc",
-    })),
-    projectImagesForAuthor(authorId),
-    projectVideosForAuthor(authorId),
-  ]);
-  return attachMedia(rows, images, videos);
+export async function getPublishedProjectSummaries(authorId: string): Promise<PortfolioProjectSummary[]> {
+  const rows = await dbSelect<StoredProjectSummary>("projects", projectSummaryParams({
+    authorId: `eq.${authorId}`,
+    status: "eq.published",
+  }, "year.desc,id.desc"));
+  return withSignedSummaryCoverUrls(rows.map(toProjectSummary));
 }
 
-export async function getCommunityProjects(viewerId: string): Promise<CommunityProject[]> {
-  const [rows, images, videos, users] = await Promise.all([
-    dbSelect<StoredProject>("projects", new URLSearchParams({
-      select: "*",
+export async function getCommunityProjectSummaries(viewerId: string): Promise<CommunityProjectSummary[]> {
+  const [rows, users] = await Promise.all([
+    dbSelect<StoredProjectSummary>("projects", projectSummaryParams({
       authorId: `neq.${viewerId}`,
       status: "eq.published",
-      order: "updatedAt.desc,year.desc,id.desc",
-    })),
-    dbSelect<StoredProjectImage>("project_images", new URLSearchParams({
-      select: "*",
-      authorId: `neq.${viewerId}`,
-      order: "sortOrder.asc,id.asc",
-    })),
-    dbSelect<StoredProjectVideo>("project_videos", new URLSearchParams({
-      select: "*",
-      authorId: `neq.${viewerId}`,
-      order: "sortOrder.asc,id.asc",
-    })),
+    }, "updatedAt.desc,year.desc,id.desc")),
     dbSelect<StoredUser>("users", { select: "id,name,email" }),
   ]);
-  const signedProjects = await attachMedia(rows, images, videos);
+  const signedProjects = await withSignedSummaryCoverUrls(rows.map(toProjectSummary));
   return signedProjects.map((project) => ({
     ...project,
     authorName: getAuthorName(users, project.authorId),
   }));
+}
+
+export async function getArchiveProjects(authorId: string): Promise<ArchiveProject[]> {
+  const rows = await dbSelect<Pick<StoredProject, "id" | "slug" | "title" | "year" | "category" | "summary" | "tags" | "createdAt">>(
+    "projects",
+    new URLSearchParams({
+      select: "id,slug,title,year,category,summary,tags,createdAt",
+      authorId: `eq.${authorId}`,
+      status: "eq.published",
+      order: "year.desc,id.desc",
+    }),
+  );
+  return rows.map((row) => ({ ...row, id: Number(row.id), tags: parseTags(row.tags) }));
+}
+
+export async function getNextPublishedProject(authorId: string, currentSlug: string): Promise<NextProject | null> {
+  const rows = await dbSelect<NextProject>("projects", new URLSearchParams({
+    select: "id,slug,title",
+    authorId: `eq.${authorId}`,
+    status: "eq.published",
+    order: "year.desc,id.desc",
+  }));
+  if (rows.length < 2) return null;
+  const currentIndex = rows.findIndex((item) => item.slug === currentSlug);
+  return rows[(currentIndex + 1) % rows.length] ?? null;
+}
+
+export async function getNextCommunityProject(viewerId: string, currentId: number): Promise<NextProject | null> {
+  const rows = await dbSelect<NextProject>("projects", new URLSearchParams({
+    select: "id,slug,title",
+    authorId: `neq.${viewerId}`,
+    status: "eq.published",
+    order: "updatedAt.desc,year.desc,id.desc",
+  }));
+  if (rows.length < 2) return null;
+  const currentIndex = rows.findIndex((item) => Number(item.id) === currentId);
+  return rows[(currentIndex + 1) % rows.length] ?? null;
 }
 
 export async function getCommunityProject(viewerId: string, id: number): Promise<CommunityProject | null> {

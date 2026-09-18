@@ -4,7 +4,7 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { ProjectOwnerActions } from "@/components/project-owner-actions";
 import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser, requireAppUser } from "@/lib/auth";
-import { getAuthorProject, getPublishedProjectMetadata, getPublishedProjects } from "@/lib/portfolio";
+import { getAuthorProject, getNextPublishedProject, getPublishedProjectMetadata } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +16,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
-  const user = await requireAppUser(`/work/${(await params).slug}`);
-  const project = await getAuthorProject(user.id, (await params).slug);
+  const { slug } = await params;
+  const user = await requireAppUser(`/work/${slug}`);
+  const project = await getAuthorProject(user.id, slug);
   if (!project) notFound();
-  const all = await getPublishedProjects(user.id);
-  const currentIndex = all.findIndex((item) => item.slug === project.slug);
-  const next = all.length > 1 ? all[(currentIndex + 1) % all.length] : null;
+  const next = await getNextPublishedProject(user.id, project.slug);
   const galleryItems = [
     ...project.images.map((image, index) => ({
       id: `image-${image.id}`,

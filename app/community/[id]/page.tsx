@@ -4,7 +4,7 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { TransitionLink } from "@/components/transition-link";
 import { getCurrentUser, requireAppUser } from "@/lib/auth";
 import { getContactLinks, type ContactKind, type ContactLink } from "@/lib/contact-links";
-import { getCommunityProject, getCommunityProjectMetadata, getCommunityProjects } from "@/lib/portfolio";
+import { getCommunityProject, getCommunityProjectMetadata, getNextCommunityProject } from "@/lib/portfolio";
 import { getProfile } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
@@ -47,13 +47,11 @@ export default async function CommunityProjectPage({ params }: { params: Promise
   const user = await requireAppUser(`/community/${id}`);
   const project = await getCommunityProject(user.id, id);
   if (!project) notFound();
-  const [all, authorProfile, authorContactLinks] = await Promise.all([
-    getCommunityProjects(user.id),
+  const [next, authorProfile, authorContactLinks] = await Promise.all([
+    getNextCommunityProject(user.id, project.id),
     getProfile(project.authorId),
     project.authorId === user.id ? Promise.resolve([]) : getContactLinks(project.authorId),
   ]);
-  const currentIndex = all.findIndex((item) => item.id === project.id);
-  const next = all.length > 1 ? all[(currentIndex + 1) % all.length] : null;
   const profileImages = authorProfile.imageUrls.map((url, index) => ({
     id: authorProfile.imageKeys[index] ?? `author-profile-${index}`,
     url,

@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { TransitionLink } from "@/components/transition-link";
 import { requireAppUser } from "@/lib/auth";
-import { getPublishedProjects } from "@/lib/portfolio";
+import { getArchiveProjects } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "档案" };
 export default async function ArchivePage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const user = await requireAppUser("/archive");
-  const projects = await getPublishedProjects(user.id);
+  const projects = await getArchiveProjects(user.id);
   const years = Array.from(new Set(projects.map((project) => project.year))).sort((a, b) => b.localeCompare(a));
   const selectedYear = (await searchParams).year;
   const activeYear = years.includes(selectedYear ?? "") ? selectedYear : "";

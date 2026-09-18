@@ -31,8 +31,8 @@ type QueryBuilder = {
   lt(column: string, value: string): QueryBuilder;
   lte(column: string, value: string): QueryBuilder;
   is(column: string, value: null | boolean): QueryBuilder;
-  order(column: string, options?: { ascending?: boolean }): QueryBuilder;
-  limit(count: number): QueryBuilder;
+  order(column: string, options?: { ascending?: boolean; referencedTable?: string }): QueryBuilder;
+  limit(count: number, options?: { referencedTable?: string }): QueryBuilder;
   then<TResult1 = SupabaseResult<unknown[]>, TResult2 = never>(
     onfulfilled?: ((value: SupabaseResult<unknown[]>) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -112,6 +112,20 @@ function applyQueryParams(builder: QueryBuilder, params?: QueryParams): QueryBui
   let query = builder;
   for (const [key, value] of paramsEntries(params)) {
     if (key === "select") continue;
+    const referencedLimit = key.match(/^([A-Za-z_][A-Za-z0-9_]*)\.limit$/);
+    if (referencedLimit) {
+      const count = Number(value);
+      if (Number.isInteger(count) && count >= 0) query = query.limit(count, { referencedTable: referencedLimit[1] });
+      continue;
+    }
+    const referencedOrder = key.match(/^([A-Za-z_][A-Za-z0-9_]*)\.order$/);
+    if (referencedOrder) {
+      for (const item of value.split(",").map((part) => part.trim()).filter(Boolean)) {
+        const [column, direction] = item.split(".");
+        if (column) query = query.order(column, { ascending: direction !== "desc", referencedTable: referencedOrder[1] });
+      }
+      continue;
+    }
     if (key === "limit") {
       const count = Number(value);
       if (Number.isInteger(count) && count >= 0) query = query.limit(count);

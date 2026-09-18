@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, access } from "node:fs/promises";
+import { readFile, access, readdir } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -139,4 +139,69 @@ test("rate limits prefer Netlify client IP header in production", async () => {
 
   assert.match(auth, /x-nf-client-connection-ip/);
   assert.ok(auth.indexOf("x-nf-client-connection-ip") < auth.indexOf("x-forwarded-for"));
+});
+
+test("list and next-project routes use lightweight media queries", async () => {
+  const [portfolio, work, archive, workDetail, community, communityDetail, projectIndex] = await Promise.all([
+    read("lib/portfolio.ts"),
+    read("app/work/page.tsx"),
+    read("app/archive/page.tsx"),
+    read("app/work/[slug]/page.tsx"),
+    read("app/community/page.tsx"),
+    read("app/community/[id]/page.tsx"),
+    read("components/project-index.tsx"),
+  ]);
+
+  assert.match(portfolio, /getPublishedProjectSummaries/);
+  assert.match(portfolio, /getCommunityProjectSummaries/);
+  assert.match(portfolio, /getArchiveProjects/);
+  assert.match(portfolio, /getNextPublishedProject/);
+  assert.match(portfolio, /getNextCommunityProject/);
+  assert.match(portfolio, /"project_images\.limit": "1"/);
+  assert.match(portfolio, /"project_videos\.limit": "1"/);
+  assert.match(work, /getPublishedProjectSummaries/);
+  assert.match(community, /getCommunityProjectSummaries/);
+  assert.match(archive, /getArchiveProjects/);
+  assert.doesNotMatch(archive, /getPublishedProjects/);
+  assert.match(workDetail, /getNextPublishedProject/);
+  assert.match(communityDetail, /getNextCommunityProject/);
+  assert.doesNotMatch(projectIndex, /^"use client"/);
+  assert.match(projectIndex, /preload="none"/);
+});
+
+test("current user lookup is request-memoized and primary navigation prefetches on intent", async () => {
+  const [auth, header] = await Promise.all([
+    read("lib/auth.ts"),
+    read("components/site-header.tsx"),
+  ]);
+
+  assert.match(auth, /import \{ cache \} from "react"/);
+  assert.match(auth, /getCurrentUser = cache\(/);
+  assert.match(header, /router\.prefetch\(href\)/);
+  assert.match(header, /onMouseEnter/);
+  assert.match(header, /onFocus/);
+});
+
+test("all production mutation routes enforce the same-origin guard", async () => {
+  const sameOrigin = await read("lib/same-origin.ts");
+  assert.match(sameOrigin, /https:\/\/cblworks\.site/);
+  assert.match(sameOrigin, /sec-fetch-site/);
+  assert.match(sameOrigin, /if \(!rawOrigin\) return null/);
+  assert.match(sameOrigin, /localhost/);
+
+  async function routeFiles(directory) {
+    const entries = await readdir(new URL(`../${directory}/`, import.meta.url), { withFileTypes: true });
+    const nested = await Promise.all(entries.map(async (entry) => {
+      const path = `${directory}/${entry.name}`;
+      return entry.isDirectory() ? routeFiles(path) : entry.name === "route.ts" ? [path] : [];
+    }));
+    return nested.flat();
+  }
+
+  const files = await routeFiles("app/api");
+  for (const file of files) {
+    const source = await read(file);
+    if (!/export async function (POST|PUT|PATCH|DELETE)/.test(source)) continue;
+    assert.match(source, /assertSameOrigin/, `${file} must import and call assertSameOrigin`);
+  }
 });

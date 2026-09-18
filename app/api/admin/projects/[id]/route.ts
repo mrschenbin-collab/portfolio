@@ -1,6 +1,7 @@
 import { apiError, requireAdminUser } from "@/lib/admin-auth";
 import { deleteProject, updateProject } from "@/lib/portfolio";
 import { parseProjectInput } from "@/lib/project-input";
+import { assertSameOrigin } from "@/lib/same-origin";
 
 function parseId(value: string): number | null {
   const id = Number(value);
@@ -9,6 +10,8 @@ function parseId(value: string): number | null {
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const id = parseId((await params).id);
@@ -24,8 +27,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const originError = assertSameOrigin(request);
+    if (originError) return originError;
     const user = await requireAdminUser();
     if (user instanceof Response) return user;
     const id = parseId((await params).id);
